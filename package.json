@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test": "tsx --test src/env.test.ts src/db.test.ts src/collectors/searchConsoleCollector.test.ts",
+    "test": "tsx --test src/env.test.ts src/db.test.ts src/collectors/searchConsoleCollector.test.ts src/collectors/analyticsCollector.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
-    "collect:search-console": "tsx scripts/collect-search-console.ts"
+    "collect:search-console": "tsx scripts/collect-search-console.ts",
+    "collect:analytics": "tsx scripts/collect-analytics.ts"
   },
   "prisma": {
     "schema": "prisma/schema.prisma"
