@@ -60,7 +60,7 @@ export async function auditStructuredData(deps: {
 
     scripts.each((_, el) => {
       const raw = $(el).contents().text();
-      let parsed: Record<string, unknown>;
+      let parsed: unknown;
       try {
         parsed = JSON.parse(raw);
       } catch {
@@ -68,8 +68,19 @@ export async function auditStructuredData(deps: {
         return;
       }
 
-      const schemaType = String(parsed["@type"] ?? "unknown");
-      const errors = validateFields(parsed, schemaType);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          const entry = item as Record<string, unknown>;
+          const schemaType = String(entry["@type"] ?? "unknown");
+          const errors = validateFields(entry, schemaType);
+          results.push({ url, schemaType, isValid: errors.length === 0, errors });
+        }
+        return;
+      }
+
+      const entry = parsed as Record<string, unknown>;
+      const schemaType = String(entry["@type"] ?? "unknown");
+      const errors = validateFields(entry, schemaType);
       results.push({ url, schemaType, isValid: errors.length === 0, errors });
     });
   }
