@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["seo_agent"]
+}
+
+model SearchConsoleSnapshot {
+  id          String   @id @default(uuid())
+  date        DateTime @db.Date
+  page        String
+  query       String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+  createdAt   DateTime @default(now())
+
+  @@unique([date, page, query])
+  @@index([date])
+  @@index([page])
+  @@schema("seo_agent")
+}
+
+model AnalyticsSnapshot {
+  id              String   @id @default(uuid())
+  date            DateTime @db.Date
+  page            String
+  channel         String
+  sessions        Int
+  engagedSessions Int
+  conversions     Int
+  createdAt       DateTime @default(now())
+
+  @@unique([date, page, channel])
+  @@index([date])
+  @@schema("seo_agent")
+}
+
+model SitemapAuditResult {
+  id           String   @id @default(uuid())
+  runAt        DateTime @default(now())
+  urlCount     Int
+  staleEntries Int
+  errors       Json
+  @@schema("seo_agent")
+}
+
+model RobotsAuditResult {
+  id      String   @id @default(uuid())
+  runAt   DateTime @default(now())
+  isValid Boolean
+  errors  Json
+  @@schema("seo_agent")
+}
+
+model StructuredDataAuditResult {
+  id         String   @id @default(uuid())
+  runAt      DateTime @default(now())
+  url        String
+  schemaType String
+  isValid    Boolean
+  errors     Json
+
+  @@index([url])
+  @@schema("seo_agent")
+}

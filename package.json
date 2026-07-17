@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test": "tsx --test src/env.test.ts",
+    "test": "tsx --test src/env.test.ts src/db.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy"
   },
