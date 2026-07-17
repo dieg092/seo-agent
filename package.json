@@ -1,0 +1,26 @@
+{
+  "name": "seo-agent",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "tsx --test src/env.test.ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy"
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@google-analytics/data": "^4.12.1",
+    "@prisma/client": "^6.13.0",
+    "cheerio": "^1.0.0",
+    "dotenv": "^17.0.0",
+    "googleapis": "^140.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "prisma": "^6.13.0",
+    "tsx": "^4.22.0",
+    "typescript": "^5"
+  }
+}
