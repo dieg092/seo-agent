@@ -19,7 +19,7 @@ jobs:
       SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v9
+      - uses: pnpm/action-setup@v6
         with:
           version: 9
       - uses: actions/setup-node@v4
