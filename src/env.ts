@@ -1,7 +1,7 @@
 import { config } from "dotenv";
 import { join } from "path";
 
-config({ path: join(__dirname, "..", ".env") });
+config({ path: join(__dirname, "..", ".env"), quiet: true });
 
 export function getEnv(name: string): string {
   const value = process.env[name];

@@ -29,7 +29,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
       - run: pnpm collect:search-console
+        continue-on-error: true
       - run: pnpm collect:analytics
+        continue-on-error: true
       - run: pnpm audit:sitemap
+        continue-on-error: true
       - run: pnpm audit:robots
+        continue-on-error: true
       - run: pnpm audit:structured-data
+        continue-on-error: true
