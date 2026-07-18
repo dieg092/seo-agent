@@ -69,3 +69,38 @@ model StructuredDataAuditResult {
   @@index([url])
   @@schema("seo_agent")
 }
+
+model Opportunity {
+  id              String    @id @default(uuid())
+  source          String
+  findingType     String
+  stableKey       String    @unique
+  sourceRefId     String
+  title           String
+  detail          Json
+  impactScore     Int
+  confidenceScore Float
+  effortScore     Int
+  priorityScore   Float
+  status          String
+  firstDetectedAt DateTime  @default(now())
+  resolvedAt      DateTime?
+
+  @@index([status])
+  @@schema("seo_agent")
+}
+
+model PerformanceAuditResult {
+  id               String   @id @default(uuid())
+  url              String
+  performanceScore Int?
+  lcp              Float?
+  cls              Float?
+  inp              Float?
+  errors           Json?
+  runAt            DateTime @default(now())
+
+  @@index([url])
+  @@index([runAt])
+  @@schema("seo_agent")
+}
