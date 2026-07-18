@@ -28,6 +28,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
+      - name: DEBUG hash secrets (temporary, no plaintext exposure)
+        run: |
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_EMAIL" | sha256sum
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY" | sha256sum
       - run: pnpm collect:search-console
       - run: pnpm collect:analytics
       - run: pnpm audit:sitemap
