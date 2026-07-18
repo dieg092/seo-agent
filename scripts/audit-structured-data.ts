@@ -12,6 +12,7 @@ async function main() {
   ];
 
   const results = await auditStructuredData({ urls: sampleUrls });
+  const runAt = new Date();
 
   for (const result of results) {
     await prisma.structuredDataAuditResult.create({
@@ -20,6 +21,7 @@ async function main() {
         schemaType: result.schemaType,
         isValid: result.isValid,
         errors: result.errors,
+        runAt,
       },
     });
   }

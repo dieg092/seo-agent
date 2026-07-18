@@ -3,14 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test": "tsx --test src/env.test.ts src/db.test.ts src/collectors/searchConsoleCollector.test.ts src/collectors/analyticsCollector.test.ts src/auditors/sitemapAuditor.test.ts src/auditors/robotsAuditor.test.ts src/auditors/structuredDataAuditor.test.ts src/auditors/performanceAuditor.test.ts src/prioritization/classify.test.ts src/prioritization/heuristics.test.ts src/prioritization/stableKey.test.ts",
+    "test": "tsx --test src/env.test.ts src/db.test.ts src/collectors/searchConsoleCollector.test.ts src/collectors/analyticsCollector.test.ts src/auditors/sitemapAuditor.test.ts src/auditors/robotsAuditor.test.ts src/auditors/structuredDataAuditor.test.ts src/auditors/performanceAuditor.test.ts src/prioritization/classify.test.ts src/prioritization/heuristics.test.ts src/prioritization/stableKey.test.ts src/prioritization/prioritize.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "collect:search-console": "tsx scripts/collect-search-console.ts",
     "collect:analytics": "tsx scripts/collect-analytics.ts",
     "audit:sitemap": "tsx scripts/audit-sitemap.ts",
     "audit:robots": "tsx scripts/audit-robots.ts",
-    "audit:structured-data": "tsx scripts/audit-structured-data.ts"
+    "audit:structured-data": "tsx scripts/audit-structured-data.ts",
+    "audit:performance": "tsx scripts/audit-performance.ts",
+    "prioritize": "tsx scripts/prioritize.ts"
   },
   "prisma": {
     "schema": "prisma/schema.prisma"
