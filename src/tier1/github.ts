@@ -29,22 +29,35 @@ export async function openPullRequestWithFileChange(deps: {
   const base = apiBase();
   const headers = authHeaders();
 
-  const mainRefResponse = await fetchImpl(`${base}/git/ref/heads/main`, {
+  const mainRefUrl = `${base}/git/ref/heads/main`;
+  const mainRefResponse = await fetchImpl(mainRefUrl, {
     method: "GET",
     headers,
   });
+  if (!mainRefResponse.ok) {
+    throw new Error(
+      `GitHub API request failed: ${mainRefResponse.status} ${mainRefResponse.statusText} (${mainRefUrl})`,
+    );
+  }
   const mainRef = (await mainRefResponse.json()) as { object: { sha: string } };
   const mainSha = mainRef.object.sha;
 
-  await fetchImpl(`${base}/git/refs`, {
+  const createRefUrl = `${base}/git/refs`;
+  const createRefResponse = await fetchImpl(createRefUrl, {
     method: "POST",
     headers,
     body: JSON.stringify({ ref: `refs/heads/${deps.branchName}`, sha: mainSha }),
   });
+  if (!createRefResponse.ok) {
+    throw new Error(
+      `GitHub API request failed: ${createRefResponse.status} ${createRefResponse.statusText} (${createRefUrl})`,
+    );
+  }
 
   const encodedPath = encodeURIComponent(deps.filePath).replace(/%2F/g, "%2F");
   const contentBase64 = Buffer.from(deps.newContent, "utf8").toString("base64");
-  await fetchImpl(`${base}/contents/${encodedPath}`, {
+  const contentsUrl = `${base}/contents/${encodedPath}`;
+  const contentsResponse = await fetchImpl(contentsUrl, {
     method: "PUT",
     headers,
     body: JSON.stringify({
@@ -54,8 +67,14 @@ export async function openPullRequestWithFileChange(deps: {
       ...(deps.existingFileSha ? { sha: deps.existingFileSha } : {}),
     }),
   });
+  if (!contentsResponse.ok) {
+    throw new Error(
+      `GitHub API request failed: ${contentsResponse.status} ${contentsResponse.statusText} (${contentsUrl})`,
+    );
+  }
 
-  const prResponse = await fetchImpl(`${base}/pulls`, {
+  const pullsUrl = `${base}/pulls`;
+  const prResponse = await fetchImpl(pullsUrl, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -65,6 +84,11 @@ export async function openPullRequestWithFileChange(deps: {
       base: "main",
     }),
   });
+  if (!prResponse.ok) {
+    throw new Error(
+      `GitHub API request failed: ${prResponse.status} ${prResponse.statusText} (${pullsUrl})`,
+    );
+  }
   const pr = (await prResponse.json()) as { html_url: string; number: number };
 
   return { prUrl: pr.html_url, prNumber: pr.number };
@@ -78,10 +102,14 @@ export async function getPullRequestStatus(deps: {
   const base = apiBase();
   const headers = authHeaders();
 
-  const response = await fetchImpl(`${base}/pulls/${deps.prNumber}`, {
+  const pullUrl = `${base}/pulls/${deps.prNumber}`;
+  const response = await fetchImpl(pullUrl, {
     method: "GET",
     headers,
   });
+  if (!response.ok) {
+    throw new Error(`GitHub API request failed: ${response.status} ${response.statusText} (${pullUrl})`);
+  }
   const pr = (await response.json()) as { state: "open" | "closed"; merged: boolean };
 
   if (pr.state === "open") return "open";

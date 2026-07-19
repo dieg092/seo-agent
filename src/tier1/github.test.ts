@@ -73,6 +73,49 @@ test("openPullRequestWithFileChange includes the existing file's blob sha in the
   assert.equal(parsedBody.sha, "current-blob-sha");
 });
 
+test("openPullRequestWithFileChange throws when GitHub returns a non-ok response (e.g. 403 on PR creation)", async () => {
+  let call = 0;
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    call += 1;
+    if (call === 1) {
+      assert.match(url, /git\/ref\/heads\/main$/);
+      return { ok: true, json: async () => ({ object: { sha: "abc123" } }) } as Response;
+    }
+    if (call === 2) {
+      assert.match(url, /git\/refs$/);
+      return { ok: true, json: async () => ({ ref: "refs/heads/seo-agent/fix-robots" }) } as Response;
+    }
+    if (call === 3) {
+      assert.equal(init?.method, "PUT");
+      return { ok: true, json: async () => ({ content: { sha: "def456" } }) } as Response;
+    }
+    // 4th call: POST /pulls fails with a 403, as happened in production when the
+    // token initially lacked Pull requests permission.
+    assert.match(url, /\/pulls$/);
+    return {
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      json: async () => ({ message: "Resource not accessible by personal access token" }),
+    } as Response;
+  };
+
+  await assert.rejects(
+    () =>
+      openPullRequestWithFileChange({
+        filePath: "src/app/robots.ts",
+        newContent: "export default function robots() {}\n",
+        branchName: "seo-agent/fix-robots",
+        commitMessage: "fix: restore correct robots.ts",
+        prTitle: "[SEO Agent] Fix robots.ts",
+        prBody: "Automated Tier 1 fix.",
+        existingFileSha: "current-blob-sha",
+        fetchImpl,
+      }),
+    /GitHub API request failed: 403/,
+  );
+});
+
 test("getPullRequestStatus maps GitHub's merged/state fields to open/merged/closed", async () => {
   const merged = await getPullRequestStatus({
     prNumber: 42,
