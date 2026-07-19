@@ -116,6 +116,24 @@ export async function getPullRequestStatus(deps: {
   return pr.merged ? "merged" : "closed";
 }
 
+export async function getPullRequestStatusWithHeaders(deps: {
+  prNumber: number;
+  fetchImpl?: typeof fetch;
+}): Promise<{ status: "open" | "merged" | "closed"; headers: Headers }> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const base = apiBase();
+  const headers = authHeaders();
+
+  const pullUrl = `${base}/pulls/${deps.prNumber}`;
+  const response = await fetchImpl(pullUrl, { method: "GET", headers });
+  if (!response.ok) {
+    throw new Error(`GitHub API request failed: ${response.status} ${response.statusText} (${pullUrl})`);
+  }
+  const pr = (await response.json()) as { state: "open" | "closed"; merged: boolean };
+  const status = pr.state === "open" ? "open" : pr.merged ? "merged" : "closed";
+  return { status, headers: response.headers };
+}
+
 export async function mergePullRequest(deps: {
   prNumber: number;
   fetchImpl?: typeof fetch;

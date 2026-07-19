@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   openPullRequestWithFileChange,
   getPullRequestStatus,
+  getPullRequestStatusWithHeaders,
   mergePullRequest,
   getExistingFileSha,
   getFileContent,
@@ -140,6 +141,20 @@ test("getPullRequestStatus maps GitHub's merged/state fields to open/merged/clos
     fetchImpl: async () => ({ ok: true, json: async () => ({ state: "open", merged: false }) }) as Response,
   });
   assert.equal(open, "open");
+});
+
+test("getPullRequestStatusWithHeaders returns both the parsed status and the raw response headers", async () => {
+  const fetchImpl = async () =>
+    ({
+      ok: true,
+      json: async () => ({ state: "open", merged: false }),
+      headers: new Headers({ "github-authentication-token-expiration": "Mon, 01 Jan 2030 00:00:00 GMT" }),
+    }) as Response;
+
+  const result = await getPullRequestStatusWithHeaders({ prNumber: 1, fetchImpl });
+
+  assert.equal(result.status, "open");
+  assert.equal(result.headers.get("github-authentication-token-expiration"), "Mon, 01 Jan 2030 00:00:00 GMT");
 });
 
 test("mergePullRequest calls the GitHub merge endpoint with PUT", async () => {
