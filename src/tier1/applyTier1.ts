@@ -18,6 +18,7 @@ const FINDING_TYPES_BY_TARGET_FILE: Record<string, FindingType[]> = {
 export async function applyTier1(deps: {
   openPr?: typeof openPullRequestWithFileChange;
   getExistingFileSha?: (filePath: string) => Promise<string>;
+  getFileContent?: (filePath: string) => Promise<string>;
   mergePr?: typeof mergePullRequest;
 } = {}): Promise<{ prsOpened: number; skippedDuplicate: number; skippedNoFixer: number }> {
   const openPr = deps.openPr ?? openPullRequestWithFileChange;
@@ -25,6 +26,11 @@ export async function applyTier1(deps: {
     deps.getExistingFileSha ??
     (async () => {
       throw new Error("getExistingFileSha must be provided in production");
+    });
+  const getFileContent =
+    deps.getFileContent ??
+    (async () => {
+      throw new Error("getFileContent not provided");
     });
   const mergePr = deps.mergePr ?? mergePullRequest;
 
@@ -97,6 +103,16 @@ export async function applyTier1(deps: {
     const existingSha = await getExistingFileSha(targetFilePath);
     const branchName = `seo-agent/fix-${opportunity.findingType}-${Date.now()}`;
 
+    let previousContent: string | null = null;
+    try {
+      previousContent = await getFileContent(targetFilePath);
+    } catch (error) {
+      console.error(
+        `No se pudo capturar el contenido previo de ${targetFilePath} (revert manual si hiciera falta):`,
+        error,
+      );
+    }
+
     const pr = await openPr({
       filePath: targetFilePath,
       newContent,
@@ -114,6 +130,8 @@ export async function applyTier1(deps: {
         prUrl: pr.prUrl,
         prNumber: pr.prNumber,
         status: "open",
+        filePath: targetFilePath,
+        previousContent,
       },
     });
 

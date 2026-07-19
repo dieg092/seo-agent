@@ -213,3 +213,40 @@ test("applyTier1 leaves the PR open (no merge call) when the finding type is not
     await prisma.graduationRecord.deleteMany({});
   });
 });
+
+test("applyTier1 captures filePath and previousContent on the created AppliedChange when getFileContent succeeds", async () => {
+  await withEmptyTables(async () => {
+    await makeOpenOpportunity();
+
+    await applyTier1({
+      openPr: async () => ({ prUrl: "https://github.com/dieg092/wedding-invite-2/pull/1", prNumber: 1 }),
+      getExistingFileSha: async () => "fake-sha",
+      getFileContent: async () => "export const previous = true;",
+      mergePr: async () => {},
+    });
+
+    const change = await prisma.appliedChange.findFirst({});
+    assert.equal(change?.filePath, "src/app/robots.ts");
+    assert.equal(change?.previousContent, "export const previous = true;");
+  });
+});
+
+test("applyTier1 still creates the AppliedChange (with null previousContent) when getFileContent fails", async () => {
+  await withEmptyTables(async () => {
+    await makeOpenOpportunity();
+
+    const result = await applyTier1({
+      openPr: async () => ({ prUrl: "https://github.com/dieg092/wedding-invite-2/pull/2", prNumber: 2 }),
+      getExistingFileSha: async () => "fake-sha",
+      getFileContent: async () => {
+        throw new Error("network error");
+      },
+      mergePr: async () => {},
+    });
+
+    assert.equal(result.prsOpened, 1);
+    const change = await prisma.appliedChange.findFirst({});
+    assert.equal(change?.filePath, "src/app/robots.ts");
+    assert.equal(change?.previousContent, null);
+  });
+});

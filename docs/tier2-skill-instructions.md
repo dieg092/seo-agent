@@ -29,7 +29,13 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
    artículos viven en `src/lib/blog/content/<categoría>/<slug>.ts` en el
    repo `wedding-invite-2`, contienen el markdown embebido).
 4. Registra cada PR abierto como un `AppliedChange` (mismo modelo que
-   Fase 3), con `findingType: "internal-link-suggestion"`.
+   Fase 3), con `findingType: "internal-link-suggestion"`. Guarda también
+   `filePath` (la ruta exacta del archivo que confirmaste en el paso 3) y
+   `previousContent` (el contenido completo del artículo ANTES de tu
+   edición, tal cual lo leíste) — esto es lo que permite abrir un PR de
+   reversión automático si más adelante se detecta que el enlace tuvo
+   impacto negativo (Fase 6). Sin estos dos campos, una reversión futura
+   tendría que hacerse a mano.
 
 ## Graduación automática
 
