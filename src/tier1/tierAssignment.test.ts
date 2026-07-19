@@ -31,3 +31,13 @@ test("every other FindingType is Tier 2 or Tier 3, never Tier 1", () => {
     assert.ok(tier === 2 || tier === 3, `${type} should be Tier 2 or 3, got ${tier}`);
   }
 });
+
+test("internal-link-suggestion is always Tier 2 (never Tier 1 — no deterministic fixer for prose edits)", () => {
+  assert.equal(getTier("internal-link-suggestion"), 2);
+});
+
+test("content opportunity finding types are always Tier 3 (always human, via the editorial calendar)", () => {
+  assert.equal(getTier("content-cannibalization"), 3);
+  assert.equal(getTier("content-declining"), 3);
+  assert.equal(getTier("content-query-gap"), 3);
+});

@@ -35,3 +35,18 @@ test("getHeuristic returns a value for every FindingType without throwing", () =
     assert.ok(result.effortScore >= 1 && result.effortScore <= 10);
   }
 });
+
+test("getHeuristic returns a value for the 4 new finding types without throwing", () => {
+  const newTypes = [
+    "internal-link-suggestion",
+    "content-cannibalization",
+    "content-declining",
+    "content-query-gap",
+  ] as const;
+
+  for (const type of newTypes) {
+    const result = getHeuristic(type);
+    assert.ok(result.impactScore >= 1 && result.impactScore <= 10);
+    assert.ok(result.effortScore >= 1 && result.effortScore <= 10);
+  }
+});

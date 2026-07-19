@@ -23,6 +23,10 @@ const HEURISTICS: Record<FindingType, Heuristic> = {
   "performance-cls-red": { impactScore: 7, effortScore: 6 },
   "performance-inp-red": { impactScore: 7, effortScore: 6 },
   "performance-low-score": { impactScore: 5, effortScore: 6 },
+  "internal-link-suggestion": { impactScore: 4, effortScore: 2 },
+  "content-cannibalization": { impactScore: 6, effortScore: 7 },
+  "content-declining": { impactScore: 6, effortScore: 6 },
+  "content-query-gap": { impactScore: 5, effortScore: 5 },
 };
 
 export function getHeuristic(findingType: FindingType): Heuristic {

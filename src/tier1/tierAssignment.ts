@@ -17,6 +17,10 @@ const TIER: Record<FindingType, 1 | 2 | 3> = {
   "performance-cls-red": 3,
   "performance-inp-red": 3,
   "performance-low-score": 3,
+  "internal-link-suggestion": 2,
+  "content-cannibalization": 3,
+  "content-declining": 3,
+  "content-query-gap": 3,
 };
 
 export function getTier(findingType: FindingType): 1 | 2 | 3 {
