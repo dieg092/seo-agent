@@ -108,14 +108,17 @@ model PerformanceAuditResult {
 }
 
 model AppliedChange {
-  id                   String   @id @default(uuid())
-  opportunityStableKey String
-  findingType          String
-  prUrl                String
-  prNumber             Int
-  status               String
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                     String   @id @default(uuid())
+  opportunityStableKey   String
+  findingType            String
+  prUrl                  String
+  prNumber               Int
+  status                 String
+  filePath               String?
+  previousContent        String?
+  revertsAppliedChangeId String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@index([opportunityStableKey])
   @@index([status])
