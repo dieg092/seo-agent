@@ -7,6 +7,7 @@ async function main() {
   console.log(
     `Priorización: ${result.created} nuevas, ${result.reopened} reabiertas, ${result.updated} actualizadas, ${result.resolved} resueltas`
   );
+  process.exit(0);
 }
 
 main().catch((error) => {
