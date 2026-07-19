@@ -1,7 +1,27 @@
-import { test } from "node:test";
+import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../db";
 import { computeCurrentFindings, syncOpportunities } from "./prioritize";
+
+// resetAuditTables() below unscopedly deletes Opportunity (real, currently-open
+// production findings) many times throughout this file, with no restore of its own —
+// it treats Opportunity like the audit-result tables (cheap to regenerate by rerunning
+// audits), but Opportunity also carries real status/history (open/resolved/reopened)
+// synced over time. Back it up once before any test runs and restore it once after all
+// tests finish, so the many resetAuditTables() calls in between are free to operate on
+// an already-safely-backed-up table without permanently destroying real data.
+let opportunityBackup: Awaited<ReturnType<typeof prisma.opportunity.findMany>> = [];
+
+before(async () => {
+  opportunityBackup = await prisma.opportunity.findMany({});
+});
+
+after(async () => {
+  await prisma.opportunity.deleteMany({});
+  if (opportunityBackup.length > 0) {
+    await prisma.opportunity.createMany({ data: opportunityBackup });
+  }
+});
 
 async function resetAuditTables() {
   await prisma.opportunity.deleteMany({});

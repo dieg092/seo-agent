@@ -4,9 +4,38 @@ import assert from "node:assert/strict";
 import { prisma } from "../db";
 import { applyTier1 } from "./applyTier1";
 
-async function resetTables() {
-  await prisma.appliedChange.deleteMany({});
+// Opportunity holds real, currently-open production findings synced from live audits.
+// AppliedChange records real GitHub PRs already opened by the pipeline — losing this
+// history risks the pipeline re-opening duplicate PRs against real production issues.
+// Back up and restore instead of wiping unscoped.
+async function withEmptyOpportunities<T>(fn: () => Promise<T>): Promise<T> {
+  const backup = await prisma.opportunity.findMany({});
   await prisma.opportunity.deleteMany({});
+  try {
+    return await fn();
+  } finally {
+    await prisma.opportunity.deleteMany({});
+    if (backup.length > 0) {
+      await prisma.opportunity.createMany({ data: backup });
+    }
+  }
+}
+
+async function withEmptyAppliedChanges<T>(fn: () => Promise<T>): Promise<T> {
+  const backup = await prisma.appliedChange.findMany({});
+  await prisma.appliedChange.deleteMany({});
+  try {
+    return await fn();
+  } finally {
+    await prisma.appliedChange.deleteMany({});
+    if (backup.length > 0) {
+      await prisma.appliedChange.createMany({ data: backup });
+    }
+  }
+}
+
+async function withEmptyTables<T>(fn: () => Promise<T>): Promise<T> {
+  return withEmptyAppliedChanges(() => withEmptyOpportunities(fn));
 }
 
 function makeOpenOpportunity(overrides: Partial<Parameters<typeof prisma.opportunity.create>[0]["data"]> = {}) {
@@ -29,114 +58,109 @@ function makeOpenOpportunity(overrides: Partial<Parameters<typeof prisma.opportu
 }
 
 test("applyTier1 opens a PR for a new Tier 1 opportunity and records an AppliedChange", async () => {
-  await resetTables();
-  await makeOpenOpportunity();
+  await withEmptyTables(async () => {
+    await makeOpenOpportunity();
 
-  const result = await applyTier1({
-    openPr: async () => ({ prUrl: "https://github.com/dieg092/wedding-invite-2/pull/1", prNumber: 1 }),
-    getExistingFileSha: async () => "fake-sha",
+    const result = await applyTier1({
+      openPr: async () => ({ prUrl: "https://github.com/dieg092/wedding-invite-2/pull/1", prNumber: 1 }),
+      getExistingFileSha: async () => "fake-sha",
+    });
+
+    assert.equal(result.prsOpened, 1);
+    const changes = await prisma.appliedChange.findMany({});
+    assert.equal(changes.length, 1);
+    assert.equal(changes[0].status, "open");
+    assert.equal(changes[0].prNumber, 1);
   });
-
-  assert.equal(result.prsOpened, 1);
-  const changes = await prisma.appliedChange.findMany({});
-  assert.equal(changes.length, 1);
-  assert.equal(changes[0].status, "open");
-  assert.equal(changes[0].prNumber, 1);
-
-  await resetTables();
 });
 
 test("applyTier1 does not open a duplicate PR for an opportunity that already has an open AppliedChange", async () => {
-  await resetTables();
-  const opportunity = await makeOpenOpportunity();
-  await prisma.appliedChange.create({
-    data: {
-      opportunityStableKey: opportunity.stableKey,
-      findingType: opportunity.findingType,
-      prUrl: "https://github.com/dieg092/wedding-invite-2/pull/1",
-      prNumber: 1,
-      status: "open",
-    },
+  await withEmptyTables(async () => {
+    const opportunity = await makeOpenOpportunity();
+    await prisma.appliedChange.create({
+      data: {
+        opportunityStableKey: opportunity.stableKey,
+        findingType: opportunity.findingType,
+        prUrl: "https://github.com/dieg092/wedding-invite-2/pull/1",
+        prNumber: 1,
+        status: "open",
+      },
+    });
+
+    const result = await applyTier1({
+      openPr: async () => {
+        throw new Error("should not be called — this is the duplicate-prevention case");
+      },
+      getExistingFileSha: async () => "fake-sha",
+    });
+
+    assert.equal(result.prsOpened, 0);
+    assert.equal(result.skippedDuplicate, 1);
   });
-
-  const result = await applyTier1({
-    openPr: async () => {
-      throw new Error("should not be called — this is the duplicate-prevention case");
-    },
-    getExistingFileSha: async () => "fake-sha",
-  });
-
-  assert.equal(result.prsOpened, 0);
-  assert.equal(result.skippedDuplicate, 1);
-
-  await resetTables();
 });
 
 test("applyTier1 skips Tier 2/3 opportunities entirely", async () => {
-  await resetTables();
-  await makeOpenOpportunity({
-    findingType: "structured-data-missing",
-    stableKey: `test-key-${Math.random()}`,
+  await withEmptyTables(async () => {
+    await makeOpenOpportunity({
+      findingType: "structured-data-missing",
+      stableKey: `test-key-${Math.random()}`,
+    });
+
+    const result = await applyTier1({
+      openPr: async () => {
+        throw new Error("should not be called — this finding type is not Tier 1");
+      },
+      getExistingFileSha: async () => "fake-sha",
+    });
+
+    assert.equal(result.prsOpened, 0);
+    const changes = await prisma.appliedChange.findMany({});
+    assert.equal(changes.length, 0);
   });
-
-  const result = await applyTier1({
-    openPr: async () => {
-      throw new Error("should not be called — this finding type is not Tier 1");
-    },
-    getExistingFileSha: async () => "fake-sha",
-  });
-
-  assert.equal(result.prsOpened, 0);
-  const changes = await prisma.appliedChange.findMany({});
-  assert.equal(changes.length, 0);
-
-  await resetTables();
 });
 
 test("applyTier1 does not open two PRs for two different robots findings that target the same file", async () => {
-  await resetTables();
-  await makeOpenOpportunity({
-    findingType: "robots-blocks-all",
-    stableKey: `test-key-robots-blocks-all-${Math.random()}`,
-  });
-  await makeOpenOpportunity({
-    findingType: "robots-missing-sitemap-directive",
-    stableKey: `test-key-robots-missing-sitemap-${Math.random()}`,
-  });
+  await withEmptyTables(async () => {
+    await makeOpenOpportunity({
+      findingType: "robots-blocks-all",
+      stableKey: `test-key-robots-blocks-all-${Math.random()}`,
+    });
+    await makeOpenOpportunity({
+      findingType: "robots-missing-sitemap-directive",
+      stableKey: `test-key-robots-missing-sitemap-${Math.random()}`,
+    });
 
-  let callCount = 0;
-  const result = await applyTier1({
-    openPr: async () => {
-      callCount += 1;
-      return { prUrl: `https://github.com/dieg092/wedding-invite-2/pull/${callCount}`, prNumber: callCount };
-    },
-    getExistingFileSha: async () => "fake-sha",
+    let callCount = 0;
+    const result = await applyTier1({
+      openPr: async () => {
+        callCount += 1;
+        return { prUrl: `https://github.com/dieg092/wedding-invite-2/pull/${callCount}`, prNumber: callCount };
+      },
+      getExistingFileSha: async () => "fake-sha",
+    });
+
+    assert.equal(callCount, 1);
+    assert.equal(result.prsOpened, 1);
+    assert.equal(result.skippedDuplicate, 1);
   });
-
-  assert.equal(callCount, 1);
-  assert.equal(result.prsOpened, 1);
-  assert.equal(result.skippedDuplicate, 1);
-
-  await resetTables();
 });
 
 test("applyTier1 caps at 3 PRs per run even if more Tier 1 opportunities are open", async () => {
-  await resetTables();
-  for (let i = 0; i < 5; i++) {
-    await makeOpenOpportunity({ stableKey: `test-key-cap-${i}` });
-  }
+  await withEmptyTables(async () => {
+    for (let i = 0; i < 5; i++) {
+      await makeOpenOpportunity({ stableKey: `test-key-cap-${i}` });
+    }
 
-  let callCount = 0;
-  const result = await applyTier1({
-    openPr: async () => {
-      callCount += 1;
-      return { prUrl: `https://github.com/dieg092/wedding-invite-2/pull/${callCount}`, prNumber: callCount };
-    },
-    getExistingFileSha: async () => "fake-sha",
+    let callCount = 0;
+    const result = await applyTier1({
+      openPr: async () => {
+        callCount += 1;
+        return { prUrl: `https://github.com/dieg092/wedding-invite-2/pull/${callCount}`, prNumber: callCount };
+      },
+      getExistingFileSha: async () => "fake-sha",
+    });
+
+    assert.equal(result.prsOpened, 3);
+    assert.equal(callCount, 3);
   });
-
-  assert.equal(result.prsOpened, 3);
-  assert.equal(callCount, 3);
-
-  await resetTables();
 });
