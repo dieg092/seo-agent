@@ -5,6 +5,23 @@ import { fetchArticleText } from "../embeddings/fetchArticleContent";
 import { getEnv } from "../env";
 import type { FindingType } from "../prioritization/types";
 
+type InternalLinkDetail = { sourceSlug: string; targetSlug: string; similarity: number };
+
+// `detail` is a Prisma `Json` column with no DB-level schema enforcement, so a row can
+// legitimately end up with a null or malformed value at runtime. Guard against that
+// instead of trusting the cast, so one bad record can't abort the whole briefing.
+function isValidInternalLinkDetail(detail: unknown): detail is InternalLinkDetail {
+  if (typeof detail !== "object" || detail === null) return false;
+  const { sourceSlug, targetSlug, similarity } = detail as Record<string, unknown>;
+  return (
+    typeof sourceSlug === "string" &&
+    sourceSlug.length > 0 &&
+    typeof targetSlug === "string" &&
+    targetSlug.length > 0 &&
+    typeof similarity === "number"
+  );
+}
+
 export async function generateBriefing(deps: {
   getArticleText?: typeof fetchArticleText;
 } = {}): Promise<string> {
@@ -36,7 +53,14 @@ export async function generateBriefing(deps: {
     sections.push(`- Prioridad: ${opportunity.priorityScore.toFixed(1)}\n`);
 
     if (opportunity.findingType === "internal-link-suggestion") {
-      const detail = opportunity.detail as { sourceSlug: string; targetSlug: string; similarity: number };
+      if (!isValidInternalLinkDetail(opportunity.detail)) {
+        sections.push(
+          `> ⚠️ Datos malformados para esta oportunidad (id: ${opportunity.id}, sourceRefId: ${opportunity.sourceRefId}). Se omite el contenido de los artículos; revisar el registro en la base de datos.\n`,
+        );
+        continue;
+      }
+
+      const detail = opportunity.detail;
       const sourceUrl = `${baseUrl}/blog/${detail.sourceSlug}`;
       const targetUrl = `${baseUrl}/blog/${detail.targetSlug}`;
 
