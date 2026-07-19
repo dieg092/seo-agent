@@ -218,3 +218,227 @@ test("measureAppliedChanges reports newly-graduated findingTypes and does not re
   await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/grad" } });
   await resetTables();
 });
+
+test("measureAppliedChanges opens a revert PR and sends an alert when a merged change with previousContent shows negative impact", async () => {
+  await resetTables();
+  await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revert-a" } });
+
+  const mergedAt = daysAgo(15);
+  const change = await prisma.appliedChange.create({
+    data: {
+      opportunityStableKey: `test-${Math.random()}`,
+      findingType: "robots-blocks-all",
+      prUrl: "https://github.com/x/y/pull/10",
+      prNumber: 10,
+      status: "merged",
+      filePath: "src/app/robots.ts",
+      previousContent: "export const original = true;",
+    },
+  });
+  await prisma.$executeRawUnsafe(
+    `UPDATE "seo_agent"."AppliedChange" SET "updatedAt" = $1 WHERE "id" = $2`,
+    mergedAt,
+    change.id
+  );
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revert-a", query: "q", clicks: 100, impressions: 500, ctr: 0.2, position: 3 },
+  });
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revert-a", query: "q", clicks: 50, impressions: 500, ctr: 0.1, position: 6 },
+  });
+
+  let openPrCalled = false;
+  let openPrArgs: { filePath: string; newContent: string } | undefined;
+  let alertCalled = false;
+
+  await measureAppliedChanges({
+    openPr: async (args) => {
+      openPrCalled = true;
+      openPrArgs = args as { filePath: string; newContent: string };
+      return { prUrl: "https://github.com/x/y/pull/11", prNumber: 11 };
+    },
+    getExistingFileSha: async () => "current-sha",
+    alert: async () => {
+      alertCalled = true;
+    },
+  });
+
+  assert.equal(openPrCalled, true);
+  assert.equal(openPrArgs?.filePath, "src/app/robots.ts");
+  assert.equal(openPrArgs?.newContent, "export const original = true;");
+  assert.equal(alertCalled, true);
+
+  const revertChange = await prisma.appliedChange.findFirst({ where: { findingType: "revert" } });
+  assert.equal(revertChange?.status, "open");
+  assert.equal(revertChange?.revertsAppliedChangeId, change.id);
+
+  await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revert-a" } });
+  await resetTables();
+});
+
+test("measureAppliedChanges sends an alert (no revert PR) when previousContent is missing", async () => {
+  await resetTables();
+  await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revert-b" } });
+
+  const mergedAt = daysAgo(15);
+  const change = await prisma.appliedChange.create({
+    data: {
+      opportunityStableKey: `test-${Math.random()}`,
+      findingType: "robots-blocks-all",
+      prUrl: "https://github.com/x/y/pull/12",
+      prNumber: 12,
+      status: "merged",
+    },
+  });
+  await prisma.$executeRawUnsafe(
+    `UPDATE "seo_agent"."AppliedChange" SET "updatedAt" = $1 WHERE "id" = $2`,
+    mergedAt,
+    change.id
+  );
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revert-b", query: "q", clicks: 100, impressions: 500, ctr: 0.2, position: 3 },
+  });
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revert-b", query: "q", clicks: 50, impressions: 500, ctr: 0.1, position: 6 },
+  });
+
+  let openPrCalled = false;
+  let alertBody = "";
+
+  await measureAppliedChanges({
+    openPr: async () => {
+      openPrCalled = true;
+      return { prUrl: "x", prNumber: 1 };
+    },
+    alert: async (args) => {
+      alertBody = args.body;
+    },
+  });
+
+  assert.equal(openPrCalled, false);
+  assert.match(alertBody, /reversión manual/);
+
+  await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revert-b" } });
+  await resetTables();
+});
+
+test("measureAppliedChanges reports revoked findingTypes when a negative outcome hits an already-graduated category", async () => {
+  await resetTables();
+  await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revoke" } });
+
+  await prisma.graduationRecord.create({
+    data: { findingType: "robots-blocks-all", consecutiveGood: 10, autoMergeEligible: true },
+  });
+
+  const mergedAt = daysAgo(15);
+  const change = await prisma.appliedChange.create({
+    data: {
+      opportunityStableKey: `test-${Math.random()}`,
+      findingType: "robots-blocks-all",
+      prUrl: "https://github.com/x/y/pull/13",
+      prNumber: 13,
+      status: "merged",
+    },
+  });
+  await prisma.$executeRawUnsafe(
+    `UPDATE "seo_agent"."AppliedChange" SET "updatedAt" = $1 WHERE "id" = $2`,
+    mergedAt,
+    change.id
+  );
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revoke", query: "q", clicks: 100, impressions: 500, ctr: 0.2, position: 3 },
+  });
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revoke", query: "q", clicks: 50, impressions: 500, ctr: 0.1, position: 6 },
+  });
+
+  const result = await measureAppliedChanges({
+    alert: async () => {},
+  });
+
+  assert.deepEqual(result.revoked, ["robots-blocks-all"]);
+
+  await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revoke" } });
+  await resetTables();
+});
+
+test("measureAppliedChanges alerts on newly-graduated findingTypes", async () => {
+  await resetTables();
+  await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/grad-alert" } });
+
+  await prisma.graduationRecord.create({
+    data: { findingType: "robots-blocks-all", consecutiveGood: 9, autoMergeEligible: false },
+  });
+
+  const mergedAt = daysAgo(15);
+  const change = await prisma.appliedChange.create({
+    data: {
+      opportunityStableKey: `test-${Math.random()}`,
+      findingType: "robots-blocks-all",
+      prUrl: "https://github.com/x/y/pull/14",
+      prNumber: 14,
+      status: "merged",
+    },
+  });
+  await prisma.$executeRawUnsafe(
+    `UPDATE "seo_agent"."AppliedChange" SET "updatedAt" = $1 WHERE "id" = $2`,
+    mergedAt,
+    change.id
+  );
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+  });
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+  });
+
+  let alertCount = 0;
+  await measureAppliedChanges({
+    alert: async () => {
+      alertCount += 1;
+    },
+  });
+
+  assert.equal(alertCount, 1);
+
+  await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/grad-alert" } });
+  await resetTables();
+});
+
+test("measureAppliedChanges does not throw when alert dispatch fails (best-effort)", async () => {
+  await resetTables();
+  await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/alert-fail" } });
+
+  const mergedAt = daysAgo(15);
+  const change = await prisma.appliedChange.create({
+    data: {
+      opportunityStableKey: `test-${Math.random()}`,
+      findingType: "robots-blocks-all",
+      prUrl: "https://github.com/x/y/pull/15",
+      prNumber: 15,
+      status: "merged",
+    },
+  });
+  await prisma.$executeRawUnsafe(
+    `UPDATE "seo_agent"."AppliedChange" SET "updatedAt" = $1 WHERE "id" = $2`,
+    mergedAt,
+    change.id
+  );
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/alert-fail", query: "q", clicks: 100, impressions: 500, ctr: 0.2, position: 3 },
+  });
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/alert-fail", query: "q", clicks: 50, impressions: 500, ctr: 0.1, position: 6 },
+  });
+
+  const result = await measureAppliedChanges({
+    alert: async () => {
+      throw new Error("Alert DB write failed");
+    },
+  });
+
+  assert.equal(result.measured, 1);
+
+  await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/alert-fail" } });
+  await resetTables();
+});
