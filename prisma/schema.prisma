@@ -104,3 +104,18 @@ model PerformanceAuditResult {
   @@index([runAt])
   @@schema("seo_agent")
 }
+
+model AppliedChange {
+  id                   String   @id @default(uuid())
+  opportunityStableKey String
+  findingType          String
+  prUrl                String
+  prNumber             Int
+  status               String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([opportunityStableKey])
+  @@index([status])
+  @@schema("seo_agent")
+}

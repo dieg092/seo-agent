@@ -16,3 +16,8 @@ test("prisma client can read from the PerformanceAuditResult table", async () =>
   const count = await prisma.performanceAuditResult.count();
   assert.equal(typeof count, "number");
 });
+
+test("prisma client can read from the AppliedChange table", async () => {
+  const count = await prisma.appliedChange.count();
+  assert.equal(typeof count, "number");
+});
