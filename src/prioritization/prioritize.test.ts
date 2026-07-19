@@ -31,75 +31,93 @@ async function resetAuditTables() {
   await prisma.performanceAuditResult.deleteMany({});
 }
 
+// Since computeCurrentFindings() now also reads real LinkSuggestion/
+// SearchConsoleSnapshot rows unconditionally (Task 8), every test below
+// that counts opportunities/findings WITHOUT filtering by source must
+// isolate those two tables too — resetAuditTables() only ever cleared the
+// 4 audit-result tables + Opportunity, which was correct before Task 8 but
+// now leaves 140+ unrelated real findings bleeding into these assertions.
 test("computeCurrentFindings + syncOpportunities creates an Opportunity from a real robots finding", async () => {
-  await resetAuditTables();
+  await withEmptyLinkSuggestions(() =>
+    withEmptySearchConsoleSnapshots(async () => {
+      await resetAuditTables();
 
-  await prisma.robotsAuditResult.create({
-    data: { isValid: false, errors: ["robots.txt contiene 'Disallow: /' — bloquearía la indexación de todo el sitio"] },
-  });
+      await prisma.robotsAuditResult.create({
+        data: { isValid: false, errors: ["robots.txt contiene 'Disallow: /' — bloquearía la indexación de todo el sitio"] },
+      });
 
-  const findings = await computeCurrentFindings();
-  const result = await syncOpportunities(findings);
+      const findings = await computeCurrentFindings();
+      const result = await syncOpportunities(findings);
 
-  assert.equal(result.created, 1);
-  const opportunities = await prisma.opportunity.findMany({ where: { status: "open" } });
-  assert.equal(opportunities.length, 1);
-  assert.equal(opportunities[0].findingType, "robots-blocks-all");
-  assert.equal(opportunities[0].impactScore, 10);
-  assert.equal(opportunities[0].priorityScore, 10);
+      assert.equal(result.created, 1);
+      const opportunities = await prisma.opportunity.findMany({ where: { status: "open" } });
+      assert.equal(opportunities.length, 1);
+      assert.equal(opportunities[0].findingType, "robots-blocks-all");
+      assert.equal(opportunities[0].impactScore, 10);
+      assert.equal(opportunities[0].priorityScore, 10);
 
-  await resetAuditTables();
+      await resetAuditTables();
+    })
+  );
 });
 
 test("running syncOpportunities twice with the same findings does not duplicate", async () => {
-  await resetAuditTables();
+  await withEmptyLinkSuggestions(() =>
+    withEmptySearchConsoleSnapshots(async () => {
+      await resetAuditTables();
 
-  await prisma.robotsAuditResult.create({
-    data: { isValid: false, errors: ["robots.txt no declara ninguna directiva Sitemap:"] },
-  });
+      await prisma.robotsAuditResult.create({
+        data: { isValid: false, errors: ["robots.txt no declara ninguna directiva Sitemap:"] },
+      });
 
-  const findings1 = await computeCurrentFindings();
-  await syncOpportunities(findings1);
-  const findings2 = await computeCurrentFindings();
-  const result2 = await syncOpportunities(findings2);
+      const findings1 = await computeCurrentFindings();
+      await syncOpportunities(findings1);
+      const findings2 = await computeCurrentFindings();
+      const result2 = await syncOpportunities(findings2);
 
-  assert.equal(result2.created, 0);
-  assert.equal(result2.updated, 1);
-  const opportunities = await prisma.opportunity.findMany({});
-  assert.equal(opportunities.length, 1);
+      assert.equal(result2.created, 0);
+      assert.equal(result2.updated, 1);
+      const opportunities = await prisma.opportunity.findMany({});
+      assert.equal(opportunities.length, 1);
 
-  await resetAuditTables();
+      await resetAuditTables();
+    })
+  );
 });
 
 test("an Opportunity is auto-resolved when its finding disappears, then reopened if it reappears", async () => {
-  await resetAuditTables();
+  await withEmptyLinkSuggestions(() =>
+    withEmptySearchConsoleSnapshots(async () => {
+      await resetAuditTables();
 
-  await prisma.robotsAuditResult.create({
-    data: { isValid: false, errors: ["robots.txt no declara ninguna directiva Sitemap:"] },
-  });
-  await syncOpportunities(await computeCurrentFindings());
+      await prisma.robotsAuditResult.create({
+        data: { isValid: false, errors: ["robots.txt no declara ninguna directiva Sitemap:"] },
+      });
+      await syncOpportunities(await computeCurrentFindings());
 
-  // Second run: robots.txt is now fixed, no errors.
-  await prisma.robotsAuditResult.create({ data: { isValid: true, errors: [] } });
-  const resultResolved = await syncOpportunities(await computeCurrentFindings());
+      // Second run: robots.txt is now fixed, no errors.
+      await prisma.robotsAuditResult.create({ data: { isValid: true, errors: [] } });
+      const resultResolved = await syncOpportunities(await computeCurrentFindings());
 
-  assert.equal(resultResolved.resolved, 1);
-  let opportunity = await prisma.opportunity.findFirstOrThrow({});
-  assert.equal(opportunity.status, "resolved");
-  assert.ok(opportunity.resolvedAt);
+      assert.equal(resultResolved.resolved, 1);
+      let opportunity = await prisma.opportunity.findFirstOrThrow({});
+      assert.equal(opportunity.status, "resolved");
+      assert.ok(opportunity.resolvedAt);
 
-  // Third run: the same problem comes back.
-  await prisma.robotsAuditResult.create({
-    data: { isValid: false, errors: ["robots.txt no declara ninguna directiva Sitemap:"] },
-  });
-  const resultReopened = await syncOpportunities(await computeCurrentFindings());
+      // Third run: the same problem comes back.
+      await prisma.robotsAuditResult.create({
+        data: { isValid: false, errors: ["robots.txt no declara ninguna directiva Sitemap:"] },
+      });
+      const resultReopened = await syncOpportunities(await computeCurrentFindings());
 
-  assert.equal(resultReopened.reopened, 1);
-  opportunity = await prisma.opportunity.findFirstOrThrow({});
-  assert.equal(opportunity.status, "open");
-  assert.equal(opportunity.resolvedAt, null);
+      assert.equal(resultReopened.reopened, 1);
+      opportunity = await prisma.opportunity.findFirstOrThrow({});
+      assert.equal(opportunity.status, "open");
+      assert.equal(opportunity.resolvedAt, null);
 
-  await resetAuditTables();
+      await resetAuditTables();
+    })
+  );
 });
 
 test("computeCurrentFindings only reads the most recent structuredData batch, not older runs", async () => {
