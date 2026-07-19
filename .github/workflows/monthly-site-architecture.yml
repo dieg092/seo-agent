@@ -1,20 +1,17 @@
-name: Weekly PR status sync
+name: Monthly Site Architecture detection
 
 on:
   schedule:
-    - cron: "0 7 * * 1"
+    - cron: "0 9 1 * *"
   workflow_dispatch: {}
 
 jobs:
-  sync:
+  detect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DIRECT_URL: ${{ secrets.DIRECT_URL }}
-      WEDDING_INVITE_2_PAT: ${{ secrets.WEDDING_INVITE_2_PAT }}
-      GITHUB_REPO_OWNER: ${{ vars.TARGET_REPO_OWNER }}
-      GITHUB_REPO_NAME: ${{ vars.TARGET_REPO_NAME }}
       SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
@@ -27,5 +24,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
-      - run: pnpm sync:applied-changes
-      - run: pnpm measure:applied-changes
+      - run: pnpm detect:site-architecture
