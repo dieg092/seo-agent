@@ -13,8 +13,8 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DIRECT_URL: ${{ secrets.DIRECT_URL }}
       WEDDING_INVITE_2_PAT: ${{ secrets.WEDDING_INVITE_2_PAT }}
-      GITHUB_REPO_OWNER: ${{ vars.GITHUB_REPO_OWNER }}
-      GITHUB_REPO_NAME: ${{ vars.GITHUB_REPO_NAME }}
+      GITHUB_REPO_OWNER: ${{ vars.TARGET_REPO_OWNER }}
+      GITHUB_REPO_NAME: ${{ vars.TARGET_REPO_NAME }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v6
