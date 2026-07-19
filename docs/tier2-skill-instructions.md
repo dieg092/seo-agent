@@ -31,9 +31,22 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
 4. Registra cada PR abierto como un `AppliedChange` (mismo modelo que
    Fase 3), con `findingType: "internal-link-suggestion"`.
 
+## Graduación automática
+
+Antes de abrir un PR de enlazado interno, comprueba si
+`internal-link-suggestion` ya está graduado (consulta
+`GraduationRecord` donde `findingType = "internal-link-suggestion"` y
+`autoMergeEligible = true`). Si lo está, mergea el PR tú mismo
+inmediatamente tras abrirlo (usando `mergePullRequest` de
+`src/tier1/github.ts`) y marca el `AppliedChange` correspondiente como
+`"merged"`. Si no está graduado (el caso normal al principio), deja el
+PR abierto para que el humano lo revise, como hasta ahora.
+
 ## Qué NO hacer
 
-- Nunca mergees el PR tú mismo — el humano decide, como en toda la Fase 3.
+- Nunca mergees el PR tú mismo salvo que `internal-link-suggestion`
+  esté graduado (ver "Graduación automática" arriba) — en el caso
+  normal, el humano decide, como en toda la Fase 3.
 - Nunca generes contenido nuevo para justificar un enlace — si no hay una
   frase natural donde insertarlo, no lo propongas.
 - Nunca toques las oportunidades Tier 3 (cannibalización, declive, gaps de

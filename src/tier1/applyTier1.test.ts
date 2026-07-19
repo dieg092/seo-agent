@@ -164,3 +164,52 @@ test("applyTier1 caps at 3 PRs per run even if more Tier 1 opportunities are ope
     assert.equal(callCount, 3);
   });
 });
+
+test("applyTier1 auto-merges the PR immediately when the finding type is graduated (autoMergeEligible)", async () => {
+  await withEmptyTables(async () => {
+    await prisma.graduationRecord.deleteMany({});
+    await prisma.graduationRecord.create({
+      data: { findingType: "robots-blocks-all", consecutiveGood: 10, autoMergeEligible: true },
+    });
+    await makeOpenOpportunity();
+
+    let mergeCalled = false;
+    const result = await applyTier1({
+      openPr: async () => ({ prUrl: "https://github.com/dieg092/wedding-invite-2/pull/1", prNumber: 1 }),
+      getExistingFileSha: async () => "fake-sha",
+      mergePr: async () => {
+        mergeCalled = true;
+      },
+    });
+
+    assert.equal(result.prsOpened, 1);
+    assert.equal(mergeCalled, true);
+    const change = await prisma.appliedChange.findFirst({});
+    assert.equal(change?.status, "merged");
+
+    await prisma.graduationRecord.deleteMany({});
+  });
+});
+
+test("applyTier1 leaves the PR open (no merge call) when the finding type is not graduated", async () => {
+  await withEmptyTables(async () => {
+    await prisma.graduationRecord.deleteMany({});
+    await makeOpenOpportunity();
+
+    let mergeCalled = false;
+    const result = await applyTier1({
+      openPr: async () => ({ prUrl: "https://github.com/dieg092/wedding-invite-2/pull/2", prNumber: 2 }),
+      getExistingFileSha: async () => "fake-sha",
+      mergePr: async () => {
+        mergeCalled = true;
+      },
+    });
+
+    assert.equal(result.prsOpened, 1);
+    assert.equal(mergeCalled, false);
+    const change = await prisma.appliedChange.findFirst({});
+    assert.equal(change?.status, "open");
+
+    await prisma.graduationRecord.deleteMany({});
+  });
+});

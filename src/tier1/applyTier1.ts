@@ -2,7 +2,7 @@
 import { prisma } from "../db";
 import { getTier } from "./tierAssignment";
 import { getRobotsFixerContent } from "./fixers/robotsFixer";
-import { openPullRequestWithFileChange } from "./github";
+import { openPullRequestWithFileChange, mergePullRequest } from "./github";
 import type { FindingType } from "../prioritization/types";
 
 const MAX_PRS_PER_RUN = 3;
@@ -18,6 +18,7 @@ const FINDING_TYPES_BY_TARGET_FILE: Record<string, FindingType[]> = {
 export async function applyTier1(deps: {
   openPr?: typeof openPullRequestWithFileChange;
   getExistingFileSha?: (filePath: string) => Promise<string>;
+  mergePr?: typeof mergePullRequest;
 } = {}): Promise<{ prsOpened: number; skippedDuplicate: number; skippedNoFixer: number }> {
   const openPr = deps.openPr ?? openPullRequestWithFileChange;
   const getExistingFileSha =
@@ -25,6 +26,7 @@ export async function applyTier1(deps: {
     (async () => {
       throw new Error("getExistingFileSha must be provided in production");
     });
+  const mergePr = deps.mergePr ?? mergePullRequest;
 
   let prsOpened = 0;
   let skippedDuplicate = 0;
@@ -105,7 +107,7 @@ export async function applyTier1(deps: {
       existingFileSha: existingSha,
     } as Parameters<typeof openPullRequestWithFileChange>[0]);
 
-    await prisma.appliedChange.create({
+    const createdChange = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: opportunity.stableKey,
         findingType: opportunity.findingType,
@@ -114,6 +116,18 @@ export async function applyTier1(deps: {
         status: "open",
       },
     });
+
+    const graduationRecord = await prisma.graduationRecord.findUnique({
+      where: { findingType: opportunity.findingType },
+    });
+
+    if (graduationRecord?.autoMergeEligible) {
+      await mergePr({ prNumber: pr.prNumber });
+      await prisma.appliedChange.update({
+        where: { id: createdChange.id },
+        data: { status: "merged" },
+      });
+    }
 
     findingTypesHandledThisRunByFile.add(`${targetFilePath}::${opportunity.findingType}`);
     prsOpened += 1;
