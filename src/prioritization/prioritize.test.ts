@@ -104,9 +104,85 @@ test("computeCurrentFindings only reads the most recent structuredData batch, no
   await resetAuditTables();
 });
 
+// The live database holds real production rows in LinkSuggestion (from Tasks 4-5)
+// and SearchConsoleSnapshot (from the Fase 1 daily collector). Tests that need an
+// empty table must back these up and restore them afterwards rather than deleting
+// them permanently.
+async function withEmptyLinkSuggestions<T>(fn: () => Promise<T>): Promise<T> {
+  const backup = await prisma.linkSuggestion.findMany({});
+  await prisma.linkSuggestion.deleteMany({});
+  try {
+    return await fn();
+  } finally {
+    await prisma.linkSuggestion.deleteMany({});
+    if (backup.length > 0) {
+      await prisma.linkSuggestion.createMany({ data: backup });
+    }
+  }
+}
+
+async function withEmptySearchConsoleSnapshots<T>(fn: () => Promise<T>): Promise<T> {
+  const backup = await prisma.searchConsoleSnapshot.findMany({});
+  await prisma.searchConsoleSnapshot.deleteMany({});
+  try {
+    return await fn();
+  } finally {
+    await prisma.searchConsoleSnapshot.deleteMany({});
+    if (backup.length > 0) {
+      await prisma.searchConsoleSnapshot.createMany({ data: backup });
+    }
+  }
+}
+
 test("computeCurrentFindings returns no findings when an audit table has zero rows (first run)", async () => {
   await resetAuditTables();
 
-  const findings = await computeCurrentFindings();
-  assert.deepEqual(findings, []);
+  await withEmptyLinkSuggestions(() =>
+    withEmptySearchConsoleSnapshots(async () => {
+      const findings = await computeCurrentFindings();
+      assert.deepEqual(findings, []);
+    })
+  );
+});
+
+test("computeCurrentFindings includes open LinkSuggestion rows as internal-link findings", async () => {
+  await resetAuditTables();
+
+  await withEmptyLinkSuggestions(async () => {
+    await prisma.linkSuggestion.create({
+      data: {
+        sourceSlug: "a",
+        targetSlug: "b",
+        similarity: 0.5,
+        stableKey: `test-link-${Math.random()}`,
+        status: "open",
+      },
+    });
+
+    const findings = await computeCurrentFindings();
+    const linkFindings = findings.filter((f) => f.source === "internalLinking");
+    assert.equal(linkFindings.length, 1);
+  });
+
+  await resetAuditTables();
+});
+
+test("computeCurrentFindings includes cannibalization findings computed from recent SearchConsoleSnapshot rows", async () => {
+  await resetAuditTables();
+
+  await withEmptySearchConsoleSnapshots(async () => {
+    const today = new Date();
+    await prisma.searchConsoleSnapshot.create({
+      data: { date: today, page: "/blog/a", query: "misma query", clicks: 1, impressions: 10, ctr: 0.1, position: 8 },
+    });
+    await prisma.searchConsoleSnapshot.create({
+      data: { date: today, page: "/blog/b", query: "misma query", clicks: 1, impressions: 10, ctr: 0.1, position: 12 },
+    });
+
+    const findings = await computeCurrentFindings();
+    const contentFindings = findings.filter((f) => f.findingType === "content-cannibalization");
+    assert.equal(contentFindings.length, 1);
+  });
+
+  await resetAuditTables();
 });

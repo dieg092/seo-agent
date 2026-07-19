@@ -4,10 +4,22 @@ import {
   extractRobotsFindings,
   extractStructuredDataFindings,
   extractPerformanceFindings,
+  extractInternalLinkFindings,
+  extractCannibalizationFindings,
+  extractDecliningFindings,
+  extractQueryGapFindings,
 } from "./classify";
 import { getHeuristic } from "./heuristics";
 import { computeStableKey } from "./stableKey";
 import type { Finding } from "./types";
+
+function aggregateClicksByPage(rows: { page: string; clicks: number }[]): { page: string; clicks: number }[] {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    totals.set(row.page, (totals.get(row.page) ?? 0) + row.clicks);
+  }
+  return Array.from(totals.entries()).map(([page, clicks]) => ({ page, clicks }));
+}
 
 export async function computeCurrentFindings(): Promise<Finding[]> {
   const findings: Finding[] = [];
@@ -41,6 +53,34 @@ export async function computeCurrentFindings(): Promise<Finding[]> {
     });
     findings.push(...extractPerformanceFindings(batch));
   }
+
+  const openLinkSuggestions = await prisma.linkSuggestion.findMany({ where: { status: "open" } });
+  findings.push(...extractInternalLinkFindings(openLinkSuggestions));
+
+  const recentSnapshots = await prisma.searchConsoleSnapshot.findMany({
+    where: { date: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) } },
+  });
+  findings.push(
+    ...extractCannibalizationFindings(recentSnapshots.map((r) => ({ page: r.page, query: r.query, date: r.date })))
+  );
+
+  const priorSnapshots = await prisma.searchConsoleSnapshot.findMany({
+    where: {
+      date: {
+        gte: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000),
+        lt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
+      },
+    },
+  });
+  const recentByPage = aggregateClicksByPage(recentSnapshots);
+  const priorByPage = aggregateClicksByPage(priorSnapshots);
+  findings.push(...extractDecliningFindings(recentByPage, priorByPage));
+
+  findings.push(
+    ...extractQueryGapFindings(
+      recentSnapshots.map((r) => ({ page: r.page, query: r.query, impressions: r.impressions, clicks: r.clicks, position: r.position }))
+    )
+  );
 
   return findings;
 }
