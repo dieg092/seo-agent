@@ -28,7 +28,10 @@ export type FindingType =
   | "internal-link-suggestion"
   | "content-cannibalization"
   | "content-declining"
-  | "content-query-gap";
+  | "content-query-gap"
+  | "site-architecture-template-performance"
+  | "site-architecture-near-duplicate"
+  | "site-architecture-missing-template";
 
 export interface Finding {
   source: FindingSource;

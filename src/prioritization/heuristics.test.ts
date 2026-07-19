@@ -50,3 +50,17 @@ test("getHeuristic returns a value for the 4 new finding types without throwing"
     assert.ok(result.effortScore >= 1 && result.effortScore <= 10);
   }
 });
+
+test("getHeuristic returns a value for the 3 site-architecture finding types without throwing", () => {
+  const newTypes = [
+    "site-architecture-template-performance",
+    "site-architecture-near-duplicate",
+    "site-architecture-missing-template",
+  ] as const;
+
+  for (const type of newTypes) {
+    const result = getHeuristic(type);
+    assert.ok(result.impactScore >= 1 && result.impactScore <= 10);
+    assert.ok(result.effortScore >= 1 && result.effortScore <= 10);
+  }
+});

@@ -21,6 +21,9 @@ const TIER: Record<FindingType, 1 | 2 | 3> = {
   "content-cannibalization": 3,
   "content-declining": 3,
   "content-query-gap": 3,
+  "site-architecture-template-performance": 3,
+  "site-architecture-near-duplicate": 3,
+  "site-architecture-missing-template": 3,
 };
 
 export function getTier(findingType: FindingType): 1 | 2 | 3 {

@@ -41,3 +41,9 @@ test("content opportunity finding types are always Tier 3 (always human, via the
   assert.equal(getTier("content-declining"), 3);
   assert.equal(getTier("content-query-gap"), 3);
 });
+
+test("all 3 site-architecture finding types are always Tier 3 (strategic decisions, never auto-applied or Opus-decided)", () => {
+  assert.equal(getTier("site-architecture-template-performance"), 3);
+  assert.equal(getTier("site-architecture-near-duplicate"), 3);
+  assert.equal(getTier("site-architecture-missing-template"), 3);
+});

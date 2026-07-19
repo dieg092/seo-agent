@@ -312,3 +312,50 @@ export function extractCannibalizationFindings(
 
   return findings;
 }
+
+const TEMPLATE_LOW_SCORE_THRESHOLD = 50;
+
+export function extractSiteArchitectureFindings(deps: {
+  templatePerformance: { url: string; scores: number[] }[];
+  nearDuplicates: { slugA: string; slugB: string; similarity: number }[];
+  missingTemplates: { province: string; impressions: number }[];
+}): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const entry of deps.templatePerformance) {
+    if (entry.scores.every((s) => s < TEMPLATE_LOW_SCORE_THRESHOLD)) {
+      findings.push({
+        source: "siteArchitecture",
+        findingType: "site-architecture-template-performance",
+        stableKeyInput: `site-architecture-template-performance:${entry.url}`,
+        title: `Rendimiento consistentemente bajo en ${entry.url} (últimas puntuaciones: ${entry.scores.join(", ")})`,
+        detail: entry,
+        sourceRefId: entry.url,
+      });
+    }
+  }
+
+  for (const pair of deps.nearDuplicates) {
+    findings.push({
+      source: "siteArchitecture",
+      findingType: "site-architecture-near-duplicate",
+      stableKeyInput: `site-architecture-near-duplicate:${pair.slugA}:${pair.slugB}`,
+      title: `Posible contenido casi duplicado: ${pair.slugA} / ${pair.slugB} (similitud ${pair.similarity.toFixed(2)})`,
+      detail: pair,
+      sourceRefId: `${pair.slugA}:${pair.slugB}`,
+    });
+  }
+
+  for (const candidate of deps.missingTemplates) {
+    findings.push({
+      source: "siteArchitecture",
+      findingType: "site-architecture-missing-template",
+      stableKeyInput: `site-architecture-missing-template:${candidate.province}`,
+      title: `"${candidate.province}" tiene ${candidate.impressions} impresiones sin página provincial dedicada`,
+      detail: candidate,
+      sourceRefId: candidate.province,
+    });
+  }
+
+  return findings;
+}

@@ -27,6 +27,9 @@ const HEURISTICS: Record<FindingType, Heuristic> = {
   "content-cannibalization": { impactScore: 6, effortScore: 7 },
   "content-declining": { impactScore: 6, effortScore: 6 },
   "content-query-gap": { impactScore: 5, effortScore: 5 },
+  "site-architecture-template-performance": { impactScore: 7, effortScore: 8 },
+  "site-architecture-near-duplicate": { impactScore: 5, effortScore: 7 },
+  "site-architecture-missing-template": { impactScore: 6, effortScore: 9 },
 };
 
 export function getHeuristic(findingType: FindingType): Heuristic {

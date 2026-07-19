@@ -10,6 +10,7 @@ import {
   extractCannibalizationFindings,
   extractDecliningFindings,
   extractQueryGapFindings,
+  extractSiteArchitectureFindings,
 } from "./classify";
 
 test("extractSitemapFindings classifies a malformed-XML error", () => {
@@ -177,4 +178,48 @@ test("extractQueryGapFindings does not flag a query that's already ranking well"
   ]);
 
   assert.equal(findings.length, 0);
+});
+
+test("extractSiteArchitectureFindings flags a template with consistently low performance scores", () => {
+  const findings = extractSiteArchitectureFindings({
+    templatePerformance: [{ url: "https://miwebdeboda.com/glosario-bodas", scores: [38, 40, 42] }],
+    nearDuplicates: [],
+    missingTemplates: [],
+  });
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].findingType, "site-architecture-template-performance");
+  assert.equal(findings[0].source, "siteArchitecture");
+});
+
+test("extractSiteArchitectureFindings does not flag a template with healthy performance scores", () => {
+  const findings = extractSiteArchitectureFindings({
+    templatePerformance: [{ url: "https://miwebdeboda.com/glosario-bodas", scores: [85, 90, 88] }],
+    nearDuplicates: [],
+    missingTemplates: [],
+  });
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractSiteArchitectureFindings creates one finding per near-duplicate pair", () => {
+  const findings = extractSiteArchitectureFindings({
+    templatePerformance: [],
+    nearDuplicates: [{ slugA: "a", slugB: "b", similarity: 0.95 }],
+    missingTemplates: [],
+  });
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].findingType, "site-architecture-near-duplicate");
+});
+
+test("extractSiteArchitectureFindings creates one finding per missing-template candidate", () => {
+  const findings = extractSiteArchitectureFindings({
+    templatePerformance: [],
+    nearDuplicates: [],
+    missingTemplates: [{ province: "malaga", impressions: 600 }],
+  });
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].findingType, "site-architecture-missing-template");
 });
