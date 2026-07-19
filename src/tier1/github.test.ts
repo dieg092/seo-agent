@@ -1,7 +1,7 @@
 // src/tier1/github.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { openPullRequestWithFileChange, getPullRequestStatus } from "./github";
+import { openPullRequestWithFileChange, getPullRequestStatus, mergePullRequest } from "./github";
 
 function fakeFetchSequence(responses: { url: RegExp; method: string; body: unknown }[]) {
   let call = 0;
@@ -134,4 +134,29 @@ test("getPullRequestStatus maps GitHub's merged/state fields to open/merged/clos
     fetchImpl: async () => ({ ok: true, json: async () => ({ state: "open", merged: false }) }) as Response,
   });
   assert.equal(open, "open");
+});
+
+test("mergePullRequest calls the GitHub merge endpoint with PUT", async () => {
+  let capturedUrl: string | undefined;
+  let capturedMethod: string | undefined;
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    capturedUrl = url;
+    capturedMethod = init?.method;
+    return { ok: true, json: async () => ({ merged: true }) } as Response;
+  };
+
+  await mergePullRequest({ prNumber: 42, fetchImpl });
+
+  assert.match(capturedUrl!, /\/pulls\/42\/merge$/);
+  assert.equal(capturedMethod, "PUT");
+});
+
+test("mergePullRequest throws on a non-ok response, matching the established pattern", async () => {
+  const fetchImpl = async () =>
+    ({ ok: false, status: 405, statusText: "Method Not Allowed" }) as Response;
+
+  await assert.rejects(
+    () => mergePullRequest({ prNumber: 42, fetchImpl }),
+    /GitHub API request failed: 405/,
+  );
 });

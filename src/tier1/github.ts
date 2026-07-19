@@ -115,3 +115,21 @@ export async function getPullRequestStatus(deps: {
   if (pr.state === "open") return "open";
   return pr.merged ? "merged" : "closed";
 }
+
+export async function mergePullRequest(deps: {
+  prNumber: number;
+  fetchImpl?: typeof fetch;
+}): Promise<void> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const base = apiBase();
+  const headers = authHeaders();
+
+  const mergeUrl = `${base}/pulls/${deps.prNumber}/merge`;
+  const response = await fetchImpl(mergeUrl, {
+    method: "PUT",
+    headers,
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub API request failed: ${response.status} ${response.statusText} (${mergeUrl})`);
+  }
+}
