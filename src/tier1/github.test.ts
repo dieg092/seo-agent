@@ -1,7 +1,13 @@
 // src/tier1/github.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { openPullRequestWithFileChange, getPullRequestStatus, mergePullRequest } from "./github";
+import {
+  openPullRequestWithFileChange,
+  getPullRequestStatus,
+  mergePullRequest,
+  getExistingFileSha,
+  getFileContent,
+} from "./github";
 
 function fakeFetchSequence(responses: { url: RegExp; method: string; body: unknown }[]) {
   let call = 0;
@@ -158,5 +164,37 @@ test("mergePullRequest throws on a non-ok response, matching the established pat
   await assert.rejects(
     () => mergePullRequest({ prNumber: 42, fetchImpl }),
     /GitHub API request failed: 405/,
+  );
+});
+
+test("getExistingFileSha fetches the sha field from the GitHub contents API", async () => {
+  let capturedUrl: string | undefined;
+  const fetchImpl = async (url: string) => {
+    capturedUrl = url;
+    return { ok: true, json: async () => ({ sha: "abc123", content: "" }) } as Response;
+  };
+
+  const sha = await getExistingFileSha({ filePath: "src/app/robots.ts", fetchImpl });
+
+  assert.equal(sha, "abc123");
+  assert.match(capturedUrl!, /\/contents\/src%2Fapp%2Frobots\.ts$/);
+});
+
+test("getFileContent fetches and base64-decodes the content field from the GitHub contents API", async () => {
+  const encoded = Buffer.from("export default {}", "utf8").toString("base64");
+  const fetchImpl = async () =>
+    ({ ok: true, json: async () => ({ sha: "abc123", content: encoded }) }) as Response;
+
+  const content = await getFileContent({ filePath: "src/app/robots.ts", fetchImpl });
+
+  assert.equal(content, "export default {}");
+});
+
+test("getExistingFileSha throws on a non-ok response, matching the established pattern", async () => {
+  const fetchImpl = async () => ({ ok: false, status: 404, statusText: "Not Found" }) as Response;
+
+  await assert.rejects(
+    () => getExistingFileSha({ filePath: "src/app/robots.ts", fetchImpl }),
+    /GitHub API request failed: 404/
   );
 });

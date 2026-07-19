@@ -133,3 +133,35 @@ export async function mergePullRequest(deps: {
     throw new Error(`GitHub API request failed: ${response.status} ${response.statusText} (${mergeUrl})`);
   }
 }
+
+async function fetchContentsApi(deps: {
+  filePath: string;
+  fetchImpl?: typeof fetch;
+}): Promise<{ sha: string; content: string }> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const base = apiBase();
+  const headers = authHeaders();
+
+  const url = `${base}/contents/${encodeURIComponent(deps.filePath)}`;
+  const response = await fetchImpl(url, { method: "GET", headers });
+  if (!response.ok) {
+    throw new Error(`GitHub API request failed: ${response.status} ${response.statusText} (${url})`);
+  }
+  return (await response.json()) as { sha: string; content: string };
+}
+
+export async function getExistingFileSha(deps: {
+  filePath: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string> {
+  const data = await fetchContentsApi(deps);
+  return data.sha;
+}
+
+export async function getFileContent(deps: {
+  filePath: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string> {
+  const data = await fetchContentsApi(deps);
+  return Buffer.from(data.content, "base64").toString("utf8");
+}
