@@ -21,3 +21,13 @@ test("prisma client can read from the AppliedChange table", async () => {
   const count = await prisma.appliedChange.count();
   assert.equal(typeof count, "number");
 });
+
+test("prisma client can read from the ArticleEmbedding table", async () => {
+  const count = await prisma.articleEmbedding.count();
+  assert.equal(typeof count, "number");
+});
+
+test("prisma client can read from the LinkSuggestion table", async () => {
+  const count = await prisma.linkSuggestion.count();
+  assert.equal(typeof count, "number");
+});

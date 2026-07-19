@@ -1,12 +1,14 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
-  schemas   = ["seo_agent"]
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  schemas    = ["seo_agent"]
+  extensions = [vector]
 }
 
 model SearchConsoleSnapshot {
@@ -116,6 +118,30 @@ model AppliedChange {
   updatedAt            DateTime @updatedAt
 
   @@index([opportunityStableKey])
+  @@index([status])
+  @@schema("seo_agent")
+}
+
+model ArticleEmbedding {
+  id          String                       @id @default(uuid())
+  slug        String                       @unique
+  url         String
+  contentHash String
+  embedding   Unsupported("vector(1024)")?
+  updatedAt   DateTime                     @updatedAt
+
+  @@schema("seo_agent")
+}
+
+model LinkSuggestion {
+  id         String   @id @default(uuid())
+  sourceSlug String
+  targetSlug String
+  similarity Float
+  stableKey  String   @unique
+  status     String
+  createdAt  DateTime @default(now())
+
   @@index([status])
   @@schema("seo_agent")
 }
