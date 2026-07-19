@@ -26,17 +26,19 @@ async function withEmptyArticleEmbeddings<T>(fn: () => Promise<T>): Promise<T> {
     return await fn();
   } finally {
     await prisma.articleEmbedding.deleteMany({});
-    for (const row of backup) {
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO "seo_agent"."ArticleEmbedding" ("id", "slug", "url", "contentHash", "embedding", "updatedAt") VALUES ($1, $2, $3, $4, $5::vector, $6)`,
-        row.id,
-        row.slug,
-        row.url,
-        row.contentHash,
-        row.embedding,
-        row.updatedAt
-      );
-    }
+    await prisma.$transaction(
+      backup.map((row) =>
+        prisma.$executeRawUnsafe(
+          `INSERT INTO "seo_agent"."ArticleEmbedding" ("id", "slug", "url", "contentHash", "embedding", "updatedAt") VALUES ($1, $2, $3, $4, $5::vector, $6)`,
+          row.id,
+          row.slug,
+          row.url,
+          row.contentHash,
+          row.embedding,
+          row.updatedAt
+        )
+      )
+    );
   }
 }
 
