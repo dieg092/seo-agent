@@ -9,7 +9,7 @@ import {
 } from "./queries";
 
 const TEST_ARTICLE_SLUGS = ["near-dup-a", "near-dup-b", "near-dup-c"];
-const TEST_SC_QUERIES = ["fotografo boda malaga", "fotografo boda sevilla"];
+const TEST_SC_QUERIES = ["__test__fotografo boda malaga", "__test__fotografo boda sevilla"];
 
 // SAFETY: ArticleEmbedding and SearchConsoleSnapshot are precious/protected
 // tables holding real production data (28 real article embeddings, real GSC
@@ -86,7 +86,7 @@ test("getMissingProvincialTemplateCandidates flags a province with real impressi
   await resetTables();
 
   await prisma.searchConsoleSnapshot.create({
-    data: { date: new Date(), page: "/blog/some-article", query: "fotografo boda malaga", clicks: 5, impressions: 600, ctr: 0.008, position: 20 },
+    data: { date: new Date(), page: "/blog/some-article", query: "__test__fotografo boda malaga", clicks: 5, impressions: 600, ctr: 0.008, position: 20 },
   });
 
   const result = await getMissingProvincialTemplateCandidates({
@@ -107,7 +107,7 @@ test("getMissingProvincialTemplateCandidates does not flag a province that alrea
   await resetTables();
 
   await prisma.searchConsoleSnapshot.create({
-    data: { date: new Date(), page: "/blog/some-article", query: "fotografo boda sevilla", clicks: 5, impressions: 600, ctr: 0.008, position: 20 },
+    data: { date: new Date(), page: "/blog/some-article", query: "__test__fotografo boda sevilla", clicks: 5, impressions: 600, ctr: 0.008, position: 20 },
   });
 
   const result = await getMissingProvincialTemplateCandidates({
