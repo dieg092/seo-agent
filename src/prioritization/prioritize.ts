@@ -11,7 +11,17 @@ import {
 } from "./classify";
 import { getHeuristic } from "./heuristics";
 import { computeStableKey } from "./stableKey";
-import type { Finding } from "./types";
+import type { Finding, FindingSource } from "./types";
+
+export const ALL_FINDING_SOURCES: FindingSource[] = [
+  "sitemap",
+  "robots",
+  "structuredData",
+  "performance",
+  "internalLinking",
+  "content",
+  "siteArchitecture",
+];
 
 function aggregateClicksByPage(rows: { page: string; clicks: number }[]): { page: string; clicks: number }[] {
   const totals = new Map<string, number>();
@@ -86,8 +96,10 @@ export async function computeCurrentFindings(): Promise<Finding[]> {
 }
 
 export async function syncOpportunities(
-  findings: Finding[]
+  findings: Finding[],
+  deps: { sourcesInScope?: FindingSource[] } = {}
 ): Promise<{ created: number; reopened: number; updated: number; resolved: number }> {
+  const sourcesInScope = deps.sourcesInScope ?? ALL_FINDING_SOURCES;
   let created = 0;
   let reopened = 0;
   let updated = 0;
@@ -151,6 +163,7 @@ export async function syncOpportunities(
 
   const openOpportunities = await prisma.opportunity.findMany({ where: { status: "open" } });
   for (const opportunity of openOpportunities) {
+    if (!sourcesInScope.includes(opportunity.source as FindingSource)) continue;
     if (!currentStableKeys.has(opportunity.stableKey)) {
       await prisma.opportunity.update({
         where: { id: opportunity.id },

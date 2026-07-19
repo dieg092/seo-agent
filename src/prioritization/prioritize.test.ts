@@ -205,6 +205,82 @@ test("computeCurrentFindings includes open LinkSuggestion rows as internal-link 
   await resetAuditTables();
 });
 
+test("syncOpportunities only auto-resolves opportunities whose source is in sourcesInScope", async () => {
+  await resetAuditTables();
+
+  await prisma.opportunity.create({
+    data: {
+      source: "robots",
+      findingType: "robots-blocks-all",
+      stableKey: `test-scope-robots-${Math.random()}`,
+      sourceRefId: "x",
+      title: "robots opportunity, should stay open",
+      detail: {},
+      impactScore: 10,
+      confidenceScore: 1,
+      effortScore: 1,
+      priorityScore: 10,
+      status: "open",
+    },
+  });
+
+  const siteArchStableKey = `test-scope-sitearch-${Math.random()}`;
+  await prisma.opportunity.create({
+    data: {
+      source: "siteArchitecture",
+      findingType: "site-architecture-near-duplicate",
+      stableKey: siteArchStableKey,
+      sourceRefId: "y",
+      title: "site architecture opportunity, should be resolved",
+      detail: {},
+      impactScore: 3,
+      confidenceScore: 1,
+      effortScore: 5,
+      priorityScore: 0.6,
+      status: "open",
+    },
+  });
+
+  // Simulate a monthly site-architecture-only run that no longer finds this opportunity.
+  const result = await syncOpportunities([], { sourcesInScope: ["siteArchitecture"] });
+
+  assert.equal(result.resolved, 1);
+
+  const robotsOpp = await prisma.opportunity.findFirst({ where: { source: "robots" } });
+  assert.equal(robotsOpp?.status, "open");
+
+  const siteArchOpp = await prisma.opportunity.findUnique({ where: { stableKey: siteArchStableKey } });
+  assert.equal(siteArchOpp?.status, "resolved");
+
+  await resetAuditTables();
+});
+
+test("syncOpportunities defaults sourcesInScope to all sources when not provided, preserving existing behavior", async () => {
+  await resetAuditTables();
+
+  await prisma.opportunity.create({
+    data: {
+      source: "robots",
+      findingType: "robots-blocks-all",
+      stableKey: `test-default-scope-${Math.random()}`,
+      sourceRefId: "x",
+      title: "should be resolved since default scope is all sources",
+      detail: {},
+      impactScore: 10,
+      confidenceScore: 1,
+      effortScore: 1,
+      priorityScore: 10,
+      status: "open",
+    },
+  });
+
+  const result = await syncOpportunities([]);
+
+  assert.equal(result.resolved, 1);
+
+  await resetAuditTables();
+});
+
 test("computeCurrentFindings includes cannibalization findings computed from recent SearchConsoleSnapshot rows", async () => {
   await resetAuditTables();
 

@@ -1,5 +1,12 @@
 // src/prioritization/types.ts
-export type FindingSource = "sitemap" | "robots" | "structuredData" | "performance" | "internalLinking" | "content";
+export type FindingSource =
+  | "sitemap"
+  | "robots"
+  | "structuredData"
+  | "performance"
+  | "internalLinking"
+  | "content"
+  | "siteArchitecture";
 
 export type FindingType =
   | "sitemap-malformed"
