@@ -18,7 +18,8 @@
     "generate:embeddings": "tsx scripts/generate-embeddings.ts",
     "compute:link-suggestions": "tsx scripts/compute-link-suggestions.ts",
     "generate:tier2-briefing": "tsx scripts/generate-tier2-briefing.ts",
-    "measure:applied-changes": "tsx scripts/measure-applied-changes.ts"
+    "measure:applied-changes": "tsx scripts/measure-applied-changes.ts",
+    "detect:site-architecture": "tsx scripts/detect-site-architecture.ts"
   },
   "prisma": {
     "schema": "prisma/schema.prisma"
