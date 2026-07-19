@@ -215,3 +215,100 @@ export function extractPerformanceFindings(
 
   return findings;
 }
+
+export function extractInternalLinkFindings(
+  rows: { id: string; sourceSlug: string; targetSlug: string; similarity: number }[]
+): Finding[] {
+  return rows.map((row) => ({
+    source: "internalLinking",
+    findingType: "internal-link-suggestion",
+    stableKeyInput: `internal-link:${row.sourceSlug}:${row.targetSlug}`,
+    title: `Posible enlace interno: ${row.sourceSlug} → ${row.targetSlug} (similitud ${row.similarity.toFixed(2)})`,
+    detail: { sourceSlug: row.sourceSlug, targetSlug: row.targetSlug, similarity: row.similarity },
+    sourceRefId: row.id,
+  }));
+}
+
+const QUERY_GAP_MIN_IMPRESSIONS = 100;
+const QUERY_GAP_MAX_CTR = 0.01;
+const QUERY_GAP_MIN_POSITION = 10;
+
+export function extractQueryGapFindings(
+  rows: { page: string; query: string; impressions: number; clicks: number; position: number }[]
+): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const row of rows) {
+    const ctr = row.impressions > 0 ? row.clicks / row.impressions : 0;
+    if (row.impressions >= QUERY_GAP_MIN_IMPRESSIONS && ctr < QUERY_GAP_MAX_CTR && row.position > QUERY_GAP_MIN_POSITION) {
+      findings.push({
+        source: "content",
+        findingType: "content-query-gap",
+        stableKeyInput: `content-query-gap:${row.page}:${row.query}`,
+        title: `"${row.query}" tiene ${row.impressions} impresiones pero posición ${row.position.toFixed(1)} en ${row.page}`,
+        detail: row,
+        sourceRefId: `${row.page}:${row.query}`,
+      });
+    }
+  }
+
+  return findings;
+}
+
+const DECLINE_THRESHOLD = 0.3;
+
+export function extractDecliningFindings(
+  recentAvg: { page: string; clicks: number }[],
+  priorAvg: { page: string; clicks: number }[]
+): Finding[] {
+  const findings: Finding[] = [];
+  const priorByPage = new Map(priorAvg.map((row) => [row.page, row.clicks]));
+
+  for (const recent of recentAvg) {
+    const prior = priorByPage.get(recent.page);
+    if (prior === undefined || prior === 0) continue;
+
+    const decline = (prior - recent.clicks) / prior;
+    if (decline >= DECLINE_THRESHOLD) {
+      findings.push({
+        source: "content",
+        findingType: "content-declining",
+        stableKeyInput: `content-declining:${recent.page}`,
+        title: `${recent.page} ha bajado un ${(decline * 100).toFixed(0)}% en clics (${prior} → ${recent.clicks})`,
+        detail: { page: recent.page, priorClicks: prior, recentClicks: recent.clicks, decline },
+        sourceRefId: recent.page,
+      });
+    }
+  }
+
+  return findings;
+}
+
+export function extractCannibalizationFindings(
+  rows: { page: string; query: string; date: Date }[]
+): Finding[] {
+  const pagesByQuery = new Map<string, Set<string>>();
+
+  for (const row of rows) {
+    if (!pagesByQuery.has(row.query)) pagesByQuery.set(row.query, new Set());
+    pagesByQuery.get(row.query)!.add(row.page);
+  }
+
+  const findings: Finding[] = [];
+
+  for (const [query, pages] of pagesByQuery) {
+    if (pages.size >= 2) {
+      const pageList = Array.from(pages).sort();
+      findings.push({
+        source: "content",
+        findingType: "content-cannibalization",
+        stableKeyInput: `content-cannibalization:${query}`,
+        title: `"${query}" recibe impresiones desde ${pages.size} páginas distintas: ${pageList.join(", ")}`,
+        detail: { query, pages: pageList },
+        sourceRefId: query,
+      });
+    }
+  }
+
+  return findings;
+}

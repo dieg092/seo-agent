@@ -1,5 +1,5 @@
 // src/prioritization/types.ts
-export type FindingSource = "sitemap" | "robots" | "structuredData" | "performance";
+export type FindingSource = "sitemap" | "robots" | "structuredData" | "performance" | "internalLinking" | "content";
 
 export type FindingType =
   | "sitemap-malformed"
@@ -17,7 +17,11 @@ export type FindingType =
   | "performance-lcp-red"
   | "performance-cls-red"
   | "performance-inp-red"
-  | "performance-low-score";
+  | "performance-low-score"
+  | "internal-link-suggestion"
+  | "content-cannibalization"
+  | "content-declining"
+  | "content-query-gap";
 
 export interface Finding {
   source: FindingSource;

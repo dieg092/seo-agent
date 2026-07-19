@@ -6,6 +6,10 @@ import {
   extractRobotsFindings,
   extractStructuredDataFindings,
   extractPerformanceFindings,
+  extractInternalLinkFindings,
+  extractCannibalizationFindings,
+  extractDecliningFindings,
+  extractQueryGapFindings,
 } from "./classify";
 
 test("extractSitemapFindings classifies a malformed-XML error", () => {
@@ -102,6 +106,74 @@ test("extractPerformanceFindings flags each breached metric separately", () => {
 test("extractPerformanceFindings returns nothing for a healthy page", () => {
   const findings = extractPerformanceFindings([
     { id: "perf-2", url: "https://miwebdeboda.com", performanceScore: 92, lcp: 1.8, cls: 0.05, inp: 180 },
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractInternalLinkFindings creates one finding per open link suggestion", () => {
+  const findings = extractInternalLinkFindings([
+    { id: "ls-1", sourceSlug: "invitaciones/como-elegir", targetSlug: "presupuesto/cuanto-cuesta", similarity: 0.62 },
+  ]);
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].findingType, "internal-link-suggestion");
+  assert.equal(findings[0].source, "internalLinking");
+  assert.equal(findings[0].sourceRefId, "ls-1");
+  assert.ok(findings[0].stableKeyInput.includes("invitaciones/como-elegir"));
+  assert.ok(findings[0].stableKeyInput.includes("presupuesto/cuanto-cuesta"));
+});
+
+test("extractCannibalizationFindings flags a query with 2+ pages and no clear winner", () => {
+  const findings = extractCannibalizationFindings([
+    { page: "/blog/a", query: "invitaciones de boda baratas", date: new Date("2026-07-01") },
+    { page: "/blog/b", query: "invitaciones de boda baratas", date: new Date("2026-07-01") },
+  ]);
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].findingType, "content-cannibalization");
+  assert.equal(findings[0].source, "content");
+});
+
+test("extractCannibalizationFindings does not flag a query with only 1 page", () => {
+  const findings = extractCannibalizationFindings([
+    { page: "/blog/a", query: "unica pagina", date: new Date("2026-07-01") },
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractDecliningFindings flags a page whose clicks dropped 30%+ vs. the prior period", () => {
+  const findings = extractDecliningFindings(
+    [{ page: "/blog/a", clicks: 7 }],
+    [{ page: "/blog/a", clicks: 10 }]
+  );
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].findingType, "content-declining");
+});
+
+test("extractDecliningFindings does not flag a page with a small or no decline", () => {
+  const findings = extractDecliningFindings(
+    [{ page: "/blog/a", clicks: 9 }],
+    [{ page: "/blog/a", clicks: 10 }]
+  );
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractQueryGapFindings flags high-impression, low-CTR, low-position queries", () => {
+  const findings = extractQueryGapFindings([
+    { page: "/blog/a", query: "cuanto cuesta una boda", impressions: 5000, clicks: 20, position: 15 },
+  ]);
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].findingType, "content-query-gap");
+});
+
+test("extractQueryGapFindings does not flag a query that's already ranking well", () => {
+  const findings = extractQueryGapFindings([
+    { page: "/blog/a", query: "bien posicionada", impressions: 5000, clicks: 500, position: 3 },
   ]);
 
   assert.equal(findings.length, 0);
