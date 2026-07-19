@@ -93,6 +93,33 @@ test("applyTier1 skips Tier 2/3 opportunities entirely", async () => {
   await resetTables();
 });
 
+test("applyTier1 does not open two PRs for two different robots findings that target the same file", async () => {
+  await resetTables();
+  await makeOpenOpportunity({
+    findingType: "robots-blocks-all",
+    stableKey: `test-key-robots-blocks-all-${Math.random()}`,
+  });
+  await makeOpenOpportunity({
+    findingType: "robots-missing-sitemap-directive",
+    stableKey: `test-key-robots-missing-sitemap-${Math.random()}`,
+  });
+
+  let callCount = 0;
+  const result = await applyTier1({
+    openPr: async () => {
+      callCount += 1;
+      return { prUrl: `https://github.com/dieg092/wedding-invite-2/pull/${callCount}`, prNumber: callCount };
+    },
+    getExistingFileSha: async () => "fake-sha",
+  });
+
+  assert.equal(callCount, 1);
+  assert.equal(result.prsOpened, 1);
+  assert.equal(result.skippedDuplicate, 1);
+
+  await resetTables();
+});
+
 test("applyTier1 caps at 3 PRs per run even if more Tier 1 opportunities are open", async () => {
   await resetTables();
   for (let i = 0; i < 5; i++) {

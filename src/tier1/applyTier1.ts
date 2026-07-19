@@ -8,6 +8,13 @@ import type { FindingType } from "../prioritization/types";
 const MAX_PRS_PER_RUN = 3;
 const ROBOTS_FILE_PATH = "src/app/robots.ts";
 
+// Finding types whose fixer targets the same file path, keyed by that file path.
+// Both robots finding types resolve to the same canonical robots.ts content, so
+// an open AppliedChange for either one means the file already has a fix in flight.
+const FINDING_TYPES_BY_TARGET_FILE: Record<string, FindingType[]> = {
+  [ROBOTS_FILE_PATH]: ["robots-missing-sitemap-directive", "robots-blocks-all"],
+};
+
 export async function applyTier1(deps: {
   openPr?: typeof openPullRequestWithFileChange;
   getExistingFileSha?: (filePath: string) => Promise<string>;
@@ -22,6 +29,12 @@ export async function applyTier1(deps: {
   let prsOpened = 0;
   let skippedDuplicate = 0;
   let skippedNoFixer = 0;
+
+  // Finding types already claimed (per target file) by an AppliedChange written
+  // earlier in this same run, so a second opportunity of a DIFFERENT finding type
+  // targeting the same file is skipped even before its own AppliedChange row
+  // would have been persisted to the DB. Keyed by `${filePath}::${findingType}`.
+  const findingTypesHandledThisRunByFile = new Set<string>();
 
   const openOpportunities = await prisma.opportunity.findMany({ where: { status: "open" } });
 
@@ -39,17 +52,51 @@ export async function applyTier1(deps: {
       continue;
     }
 
+    // The target file path for this opportunity's fixer. Currently only the
+    // robots fixer exists, so this is always ROBOTS_FILE_PATH, but the lookup
+    // is keyed off findingType so additional fixers/paths can be added later.
+    const targetFilePath = ROBOTS_FILE_PATH;
+    // Other finding types (not this opportunity's own) that resolve to the same
+    // target file. Two opportunities of the SAME finding type are left to the
+    // per-stableKey dedup above; this only guards against two DIFFERENT finding
+    // types independently proposing a fix for the same underlying file.
+    const otherFindingTypesForFile = (FINDING_TYPES_BY_TARGET_FILE[targetFilePath] ?? []).filter(
+      (ft) => ft !== opportunity.findingType,
+    );
+
+    const alreadyHandledThisRun = otherFindingTypesForFile.some((ft) =>
+      findingTypesHandledThisRunByFile.has(`${targetFilePath}::${ft}`),
+    );
+    if (alreadyHandledThisRun) {
+      skippedDuplicate += 1;
+      continue;
+    }
+
+    const existingChangeForFile =
+      otherFindingTypesForFile.length > 0
+        ? await prisma.appliedChange.findFirst({
+            where: {
+              findingType: { in: otherFindingTypesForFile },
+              status: "open",
+            },
+          })
+        : null;
+    if (existingChangeForFile) {
+      skippedDuplicate += 1;
+      continue;
+    }
+
     const newContent = getRobotsFixerContent(opportunity.findingType);
     if (!newContent) {
       skippedNoFixer += 1;
       continue;
     }
 
-    const existingSha = await getExistingFileSha(ROBOTS_FILE_PATH);
+    const existingSha = await getExistingFileSha(targetFilePath);
     const branchName = `seo-agent/fix-${opportunity.findingType}-${Date.now()}`;
 
     const pr = await openPr({
-      filePath: ROBOTS_FILE_PATH,
+      filePath: targetFilePath,
       newContent,
       branchName,
       commitMessage: `fix: ${opportunity.title}`,
@@ -68,6 +115,7 @@ export async function applyTier1(deps: {
       },
     });
 
+    findingTypesHandledThisRunByFile.add(`${targetFilePath}::${opportunity.findingType}`);
     prsOpened += 1;
   }
 
