@@ -170,3 +170,15 @@ model ImpactMeasurement {
 
   @@schema("seo_agent")
 }
+
+model Alert {
+  id           String   @id @default(uuid())
+  type         String
+  subject      String
+  body         String
+  acknowledged Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([acknowledged])
+  @@schema("seo_agent")
+}
