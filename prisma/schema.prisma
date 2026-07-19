@@ -145,3 +145,25 @@ model LinkSuggestion {
   @@index([status])
   @@schema("seo_agent")
 }
+
+model GraduationRecord {
+  id                String   @id @default(uuid())
+  findingType       String   @unique
+  consecutiveGood   Int      @default(0)
+  autoMergeEligible Boolean  @default(false)
+  updatedAt         DateTime @updatedAt
+
+  @@schema("seo_agent")
+}
+
+model ImpactMeasurement {
+  id              String   @id @default(uuid())
+  appliedChangeId String   @unique
+  findingType     String
+  outcome         String
+  beforeMetric    Float
+  afterMetric     Float
+  measuredAt      DateTime @default(now())
+
+  @@schema("seo_agent")
+}
