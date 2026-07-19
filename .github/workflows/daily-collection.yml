@@ -14,6 +14,7 @@ jobs:
       DIRECT_URL: ${{ secrets.DIRECT_URL }}
       GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
       GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+      PAGESPEED_API_KEY: ${{ secrets.PAGESPEED_API_KEY }}
       GSC_SITE_URL: ${{ vars.GSC_SITE_URL }}
       GA4_PROPERTY_ID: ${{ vars.GA4_PROPERTY_ID }}
       SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
@@ -38,3 +39,12 @@ jobs:
         continue-on-error: true
       - run: pnpm audit:structured-data
         continue-on-error: true
+      - name: Performance audit (weekly, Mondays only)
+        run: |
+          if [ "$(date -u +%u)" = "1" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            pnpm audit:performance
+          else
+            echo "Not Monday — skipping weekly performance audit."
+          fi
+        continue-on-error: true
+      - run: pnpm prioritize
