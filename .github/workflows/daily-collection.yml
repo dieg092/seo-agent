@@ -15,6 +15,9 @@ jobs:
       GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
       GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
       PAGESPEED_API_KEY: ${{ secrets.PAGESPEED_API_KEY }}
+      WEDDING_INVITE_2_PAT: ${{ secrets.WEDDING_INVITE_2_PAT }}
+      GITHUB_REPO_OWNER: ${{ vars.GITHUB_REPO_OWNER }}
+      GITHUB_REPO_NAME: ${{ vars.GITHUB_REPO_NAME }}
       GSC_SITE_URL: ${{ vars.GSC_SITE_URL }}
       GA4_PROPERTY_ID: ${{ vars.GA4_PROPERTY_ID }}
       SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
@@ -48,3 +51,4 @@ jobs:
           fi
         continue-on-error: true
       - run: pnpm prioritize
+      - run: pnpm apply:tier1

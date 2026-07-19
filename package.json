@@ -13,7 +13,8 @@
     "audit:structured-data": "tsx scripts/audit-structured-data.ts",
     "audit:performance": "tsx scripts/audit-performance.ts",
     "prioritize": "tsx scripts/prioritize.ts",
-    "apply:tier1": "tsx scripts/apply-tier1.ts"
+    "apply:tier1": "tsx scripts/apply-tier1.ts",
+    "sync:applied-changes": "tsx scripts/sync-applied-changes.ts"
   },
   "prisma": {
     "schema": "prisma/schema.prisma"

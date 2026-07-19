@@ -1,0 +1,29 @@
+name: Weekly PR status sync
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      WEDDING_INVITE_2_PAT: ${{ secrets.WEDDING_INVITE_2_PAT }}
+      GITHUB_REPO_OWNER: ${{ vars.GITHUB_REPO_OWNER }}
+      GITHUB_REPO_NAME: ${{ vars.GITHUB_REPO_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm sync:applied-changes
