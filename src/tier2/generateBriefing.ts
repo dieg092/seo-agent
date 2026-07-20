@@ -39,7 +39,29 @@ export async function generateBriefing(deps: {
     orderBy: { priorityScore: "desc" },
   });
 
-  const tier2Opportunities = openOpportunities.filter((o) => getTier(o.findingType as FindingType) === 2);
+  const tier2OpportunitiesAll = openOpportunities.filter((o) => getTier(o.findingType as FindingType) === 2);
+
+  // A Tier 2 reviewer already read this exact opportunity and deliberately decided not
+  // to act on it (no natural sentence, redundant with an existing link, excluded by the
+  // per-article cap after comparing candidates...). Re-listing it verbatim in every
+  // future briefing — with no new information — makes "reviewed and rejected" and
+  // "never looked at" indistinguishable to whoever reads the briefing next. Only
+  // resurface it once the source article's content has actually changed since that
+  // review (a new ArticleEmbedding.contentHash), since that's the one thing that could
+  // make the earlier rejection stale.
+  const tier2Opportunities: typeof tier2OpportunitiesAll = [];
+  for (const opportunity of tier2OpportunitiesAll) {
+    if (opportunity.findingType !== "internal-link-suggestion" || !opportunity.reviewedNoActionContentHash) {
+      tier2Opportunities.push(opportunity);
+      continue;
+    }
+    const detail = isValidInternalLinkDetail(opportunity.detail) ? opportunity.detail : null;
+    const article = detail ? await prisma.articleEmbedding.findUnique({ where: { slug: detail.sourceSlug } }) : null;
+    const stillUnchanged = article?.contentHash === opportunity.reviewedNoActionContentHash;
+    if (!stillUnchanged) {
+      tier2Opportunities.push(opportunity);
+    }
+  }
 
   if (tier2Opportunities.length === 0) {
     return "# Briefing Tier 2 — SEO Agent\n\nNo hay oportunidades Tier 2 abiertas ahora mismo.\n";

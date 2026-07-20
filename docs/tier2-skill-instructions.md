@@ -35,10 +35,22 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
      insertar el enlace, y el texto ancla exacto a usar. No inventes
      contenido nuevo — el enlace debe encajar en una frase ya existente
      o una variación mínima de ella.
-   - Si decides que no: no hagas nada con esa sugerencia (no hace falta
-     "rechazarla" explícitamente — si el pipeline determinista la sigue
-     detectando la próxima semana, simplemente evalúala de nuevo con el
-     mismo criterio).
+   - Si decides que no: marca la `Opportunity` con `reviewedNoActionAt:
+     new Date()`, `reviewedNoActionContentHash` (el `contentHash` ACTUAL
+     del artículo origen en `ArticleEmbedding`, para el `slug` de
+     `detail.sourceSlug`) y `reviewedNoActionReason` (una frase con el
+     motivo concreto: sin frase natural, mención genérica, redundante con
+     un enlace ya existente, o descartada por el tope tras comparar con
+     mejores candidatas). No cambies `status`, sigue `open`. Esto es
+     importante: sin el hash, el briefing y la tarjeta del panel te
+     volverán a enseñar la misma sugerencia que ya rechazaste como si
+     fuera nueva, indistinguible de una que nunca has mirado — que es
+     exactamente la confusión que este campo existe para evitar.
+     `generateBriefing.ts` omite automáticamente cualquier oportunidad
+     cuyo `reviewedNoActionContentHash` coincida con el `contentHash`
+     actual del artículo; solo vuelve a aparecer si el artículo cambia de
+     verdad (nuevo `contentHash`), momento en el que la revisión anterior
+     ya no aplica y hay que evaluarla de nuevo con el mismo criterio.
 4. Para cada enlace que decidas proponer, usa el cliente de GitHub ya
    construido en la Fase 3 (`src/tier1/github.ts`, función
    `openPullRequestWithFileChange`) para abrir un PR contra
@@ -72,8 +84,10 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
    oportunidad NUNCA se marcaría como resuelta sola en una ejecución
    futura de `prioritize` — seguiría apareciendo en el briefing y en la
    tarjeta "Trabajos sugeridos" del panel como si nada se hubiera hecho.
-   Si decides NO aplicar una sugerencia (paso 3), no toques su
-   `Opportunity`: déjala `open` para que se reevalúe la próxima vez.
+   Si decides NO aplicar una sugerencia (paso 3), no la dejes intacta:
+   registra el rechazo con los campos `reviewedNoAction*` como se explica
+   ahí, para que no vuelva a contarse como "pendiente" hasta que el
+   artículo cambie de verdad.
 
 ## Qué NO hacer
 

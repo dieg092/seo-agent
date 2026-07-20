@@ -20,6 +20,52 @@ async function withEmptyOpportunities<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+// ArticleEmbedding's "embedding" column is a Prisma Unsupported("vector") type, invisible
+// to findMany/createMany, so it must be backed up/restored via raw SQL (casting vector
+// <-> text) to avoid silently dropping the vector itself.
+type ArticleEmbeddingRawRow = {
+  id: string;
+  slug: string;
+  url: string;
+  contentHash: string;
+  embedding: string | null;
+  updatedAt: Date;
+};
+
+async function withEmptyArticleEmbeddings<T>(fn: () => Promise<T>): Promise<T> {
+  const backup = await prisma.$queryRawUnsafe<ArticleEmbeddingRawRow[]>(
+    `SELECT id, slug, url, "contentHash", embedding::text AS embedding, "updatedAt" FROM "seo_agent"."ArticleEmbedding"`
+  );
+  await prisma.articleEmbedding.deleteMany({});
+  try {
+    return await fn();
+  } finally {
+    await prisma.articleEmbedding.deleteMany({});
+    await prisma.$transaction(
+      backup.map((row) =>
+        prisma.$executeRawUnsafe(
+          `INSERT INTO "seo_agent"."ArticleEmbedding" ("id", "slug", "url", "contentHash", "embedding", "updatedAt") VALUES ($1, $2, $3, $4, $5::vector, $6)`,
+          row.id,
+          row.slug,
+          row.url,
+          row.contentHash,
+          row.embedding,
+          row.updatedAt
+        )
+      )
+    );
+  }
+}
+
+async function seedArticle(slug: string, contentHash: string) {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "seo_agent"."ArticleEmbedding" ("id", "slug", "url", "contentHash", "updatedAt") VALUES (gen_random_uuid(), $1, $2, $3, now())`,
+    slug,
+    `https://miwebdeboda.com/blog/${slug}`,
+    contentHash
+  );
+}
+
 test("generateBriefing includes only Tier 2 open opportunities, with both articles' text for internal-link suggestions", async () => {
   await withEmptyOpportunities(async () => {
     await prisma.opportunity.create({
@@ -121,4 +167,68 @@ test("generateBriefing skips a malformed internal-link-suggestion detail without
     assert.ok(briefing.includes("ls-malformed"));
     assert.ok(/malformad|inválid|invalid|skip|omitid/i.test(briefing));
   });
+});
+
+test("generateBriefing omits an internal-link-suggestion already reviewed and rejected, as long as the source article hasn't changed since", async () => {
+  await withEmptyArticleEmbeddings(() =>
+    withEmptyOpportunities(async () => {
+      await seedArticle("e", "hash-unchanged");
+
+      await prisma.opportunity.create({
+        data: {
+          source: "internalLinking",
+          findingType: "internal-link-suggestion",
+          stableKey: `test-${Math.random()}`,
+          sourceRefId: "ls-reviewed",
+          title: "Posible enlace interno: e → f",
+          detail: { sourceSlug: "e", targetSlug: "f", similarity: 0.6 },
+          impactScore: 4,
+          confidenceScore: 1,
+          effortScore: 2,
+          priorityScore: 2,
+          status: "open",
+          reviewedNoActionAt: new Date(),
+          reviewedNoActionContentHash: "hash-unchanged",
+          reviewedNoActionReason: "Sin frase natural donde encajar el enlace.",
+        },
+      });
+
+      const briefing = await generateBriefing({ getArticleText: async () => "" });
+
+      assert.ok(!briefing.includes("Posible enlace interno: e → f"));
+    })
+  );
+});
+
+test("generateBriefing re-includes a previously-rejected internal-link-suggestion once the source article's content has changed", async () => {
+  await withEmptyArticleEmbeddings(() =>
+    withEmptyOpportunities(async () => {
+      await seedArticle("g", "hash-after-edit");
+
+      await prisma.opportunity.create({
+        data: {
+          source: "internalLinking",
+          findingType: "internal-link-suggestion",
+          stableKey: `test-${Math.random()}`,
+          sourceRefId: "ls-stale-review",
+          title: "Posible enlace interno: g → h",
+          detail: { sourceSlug: "g", targetSlug: "h", similarity: 0.6 },
+          impactScore: 4,
+          confidenceScore: 1,
+          effortScore: 2,
+          priorityScore: 2,
+          status: "open",
+          reviewedNoActionAt: new Date(),
+          reviewedNoActionContentHash: "hash-before-edit",
+          reviewedNoActionReason: "Sin frase natural donde encajar el enlace.",
+        },
+      });
+
+      const briefing = await generateBriefing({
+        getArticleText: async ({ url }) => `contenido de ${url}`,
+      });
+
+      assert.ok(briefing.includes("Posible enlace interno: g → h"));
+    })
+  );
 });

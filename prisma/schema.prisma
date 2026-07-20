@@ -73,20 +73,23 @@ model StructuredDataAuditResult {
 }
 
 model Opportunity {
-  id              String    @id @default(uuid())
-  source          String
-  findingType     String
-  stableKey       String    @unique
-  sourceRefId     String
-  title           String
-  detail          Json
-  impactScore     Int
-  confidenceScore Float
-  effortScore     Int
-  priorityScore   Float
-  status          String
-  firstDetectedAt DateTime  @default(now())
-  resolvedAt      DateTime?
+  id                          String    @id @default(uuid())
+  source                      String
+  findingType                 String
+  stableKey                   String    @unique
+  sourceRefId                 String
+  title                       String
+  detail                      Json
+  impactScore                 Int
+  confidenceScore             Float
+  effortScore                 Int
+  priorityScore               Float
+  status                      String
+  firstDetectedAt             DateTime  @default(now())
+  resolvedAt                  DateTime?
+  reviewedNoActionAt          DateTime?
+  reviewedNoActionContentHash String?
+  reviewedNoActionReason      String?
 
   @@index([status])
   @@schema("seo_agent")
