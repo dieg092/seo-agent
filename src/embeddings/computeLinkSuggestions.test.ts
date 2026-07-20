@@ -73,28 +73,32 @@ function makeVector(base: number[]): number[] {
   return [...base, ...new Array(1024 - base.length).fill(0)];
 }
 
+// Stub for the live-HTML fetch computeLinkSuggestions uses to check for
+// already-existing links. Real network calls have no place in a unit test.
+const noLinksHtml = async () => "<html><body><p>no links here</p></body></html>";
+
 test("computeLinkSuggestions creates a suggestion for two highly similar articles", async () => {
   await withEmptyTables(async () => {
-    await seedArticle("a", makeVector([1, 0, 0]));
-    await seedArticle("b", makeVector([0.99, 0.01, 0]));
+    await seedArticle("cat/a", makeVector([1, 0, 0]));
+    await seedArticle("cat/b", makeVector([0.99, 0.01, 0]));
 
-    const result = await computeLinkSuggestions();
+    const result = await computeLinkSuggestions({ fetchHtml: noLinksHtml });
 
     assert.equal(result.created > 0, true);
     const suggestions = await prisma.linkSuggestion.findMany({ where: { status: "open" } });
-    assert.ok(suggestions.some((s) => s.sourceSlug === "a" && s.targetSlug === "b"));
+    assert.ok(suggestions.some((s) => s.sourceSlug === "cat/a" && s.targetSlug === "cat/b"));
   });
 });
 
 test("computeLinkSuggestions does not suggest a link between dissimilar articles", async () => {
   await withEmptyTables(async () => {
-    await seedArticle("a", makeVector([1, 0, 0]));
-    await seedArticle("c", makeVector([0, 1, 0]));
+    await seedArticle("cat/a", makeVector([1, 0, 0]));
+    await seedArticle("cat/c", makeVector([0, 1, 0]));
 
-    await computeLinkSuggestions();
+    await computeLinkSuggestions({ fetchHtml: noLinksHtml });
 
     const suggestions = await prisma.linkSuggestion.findMany({
-      where: { sourceSlug: "a", targetSlug: "c" },
+      where: { sourceSlug: "cat/a", targetSlug: "cat/c" },
     });
     assert.equal(suggestions.length, 0);
   });
@@ -102,22 +106,79 @@ test("computeLinkSuggestions does not suggest a link between dissimilar articles
 
 test("computeLinkSuggestions dismisses a previously-open suggestion that no longer meets the threshold", async () => {
   await withEmptyTables(async () => {
-    await seedArticle("a", makeVector([1, 0, 0]));
-    await seedArticle("b", makeVector([0.99, 0.01, 0]));
-    await computeLinkSuggestions();
+    await seedArticle("cat/a", makeVector([1, 0, 0]));
+    await seedArticle("cat/b", makeVector([0.99, 0.01, 0]));
+    await computeLinkSuggestions({ fetchHtml: noLinksHtml });
 
     // Article b's content changes enough that it's no longer similar to a.
     await prisma.$executeRawUnsafe(
-      `UPDATE "seo_agent"."ArticleEmbedding" SET "embedding" = $1::vector WHERE "slug" = 'b'`,
+      `UPDATE "seo_agent"."ArticleEmbedding" SET "embedding" = $1::vector WHERE "slug" = 'cat/b'`,
       `[${makeVector([0, 1, 0]).join(",")}]`
     );
 
-    const result = await computeLinkSuggestions();
+    const result = await computeLinkSuggestions({ fetchHtml: noLinksHtml });
 
     assert.equal(result.dismissed > 0, true);
     const suggestion = await prisma.linkSuggestion.findFirst({
-      where: { sourceSlug: "a", targetSlug: "b" },
+      where: { sourceSlug: "cat/a", targetSlug: "cat/b" },
     });
     assert.equal(suggestion?.status, "dismissed");
+  });
+});
+
+test("computeLinkSuggestions never proposes a category index page (bare slug) as a link source", async () => {
+  await withEmptyTables(async () => {
+    // "cat" is a category index page (rendered from the article list itself,
+    // no prose file to edit); "cat/a" is a real article in that category.
+    await seedArticle("cat", makeVector([1, 0, 0]));
+    await seedArticle("cat/a", makeVector([0.99, 0.01, 0]));
+
+    await computeLinkSuggestions({ fetchHtml: noLinksHtml });
+
+    const suggestions = await prisma.linkSuggestion.findMany({ where: { sourceSlug: "cat" } });
+    assert.equal(suggestions.length, 0);
+  });
+});
+
+test("computeLinkSuggestions still allows a category index page as a link target", async () => {
+  await withEmptyTables(async () => {
+    await seedArticle("cat", makeVector([1, 0, 0]));
+    await seedArticle("cat/a", makeVector([0.99, 0.01, 0]));
+
+    await computeLinkSuggestions({ fetchHtml: noLinksHtml });
+
+    const suggestions = await prisma.linkSuggestion.findMany({
+      where: { sourceSlug: "cat/a", targetSlug: "cat", status: "open" },
+    });
+    assert.equal(suggestions.length, 1);
+  });
+});
+
+test("computeLinkSuggestions skips (and dismisses) a pair the source article already links to", async () => {
+  await withEmptyTables(async () => {
+    await seedArticle("cat/a", makeVector([1, 0, 0]));
+    await seedArticle("cat/b", makeVector([0.99, 0.01, 0]));
+
+    // First run with no existing link: the suggestion is created as open.
+    await computeLinkSuggestions({ fetchHtml: noLinksHtml });
+    const beforeFix = await prisma.linkSuggestion.findFirst({
+      where: { sourceSlug: "cat/a", targetSlug: "cat/b" },
+    });
+    assert.equal(beforeFix?.status, "open");
+
+    // Now "cat/a" has actually been edited to link to "cat/b" — the fetch
+    // for cat/a returns HTML containing that anchor.
+    const fetchAfterFix = async (url: string) =>
+      url.endsWith("/blog/cat/a")
+        ? `<html><body><a href="/blog/cat/b">ver más</a></body></html>`
+        : "<html><body></body></html>";
+
+    const result = await computeLinkSuggestions({ fetchHtml: fetchAfterFix });
+
+    assert.equal(result.dismissed, 1);
+    const afterFix = await prisma.linkSuggestion.findFirst({
+      where: { sourceSlug: "cat/a", targetSlug: "cat/b" },
+    });
+    assert.equal(afterFix?.status, "dismissed");
   });
 });
