@@ -28,36 +28,33 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
    artículo origen — confirma primero la ruta exacta del archivo (los
    artículos viven en `src/lib/blog/content/<categoría>/<slug>.ts` en el
    repo `wedding-invite-2`, contienen el markdown embebido).
-4. Registra cada PR abierto como un `AppliedChange` (mismo modelo que
-   Fase 3), con `findingType: "internal-link-suggestion"`. Guarda también
+4. Mergea el PR tú mismo inmediatamente tras abrirlo (usando
+   `mergePullRequest` de `src/tier1/github.ts`) — no lo dejes esperando
+   revisión. La decisión editorial (paso 2) ya es el filtro humano; una
+   vez tomada, aplicar el cambio de inmediato es lo que se pide
+   explícitamente al lanzar esta revisión (revisado 2026-07-20, ya no
+   depende de si `internal-link-suggestion` está graduado — se aplica
+   siempre, para cualquier PR que abras en este flujo).
+5. Registra el PR (ya mergeado) como un `AppliedChange` con `status:
+   "merged"` y `findingType: "internal-link-suggestion"`. Guarda también
    `filePath` (la ruta exacta del archivo que confirmaste en el paso 3) y
    `previousContent` (el contenido completo del artículo ANTES de tu
    edición, tal cual lo leíste) — esto es lo que permite abrir un PR de
-   reversión automático si más adelante se detecta que el enlace tuvo
-   impacto negativo (Fase 6). Sin estos dos campos, una reversión futura
-   tendría que hacerse a mano.
-
-## Graduación automática
-
-Antes de abrir un PR de enlazado interno, comprueba si
-`internal-link-suggestion` ya está graduado (consulta
-`GraduationRecord` donde `findingType = "internal-link-suggestion"` y
-`autoMergeEligible = true`). Si lo está, mergea el PR tú mismo
-inmediatamente tras abrirlo (usando `mergePullRequest` de
-`src/tier1/github.ts`) y marca el `AppliedChange` correspondiente como
-`"merged"`. Si no está graduado (el caso normal al principio), deja el
-PR abierto para que el humano lo revise, como hasta ahora.
+   reversión automático si más adelante `measure-applied-changes`
+   detecta que el enlace tuvo impacto negativo (Fase 6). Este mecanismo
+   de medición y reversión sigue funcionando exactamente igual que antes
+   — lo único que cambia es que ya no esperas una revisión previa al
+   merge, no que dejes de vigilar el impacto después.
 
 ## Qué NO hacer
 
-- Nunca mergees el PR tú mismo salvo que `internal-link-suggestion`
-  esté graduado (ver "Graduación automática" arriba) — en el caso
-  normal, el humano decide, como en toda la Fase 3.
 - Nunca generes contenido nuevo para justificar un enlace — si no hay una
   frase natural donde insertarlo, no lo propongas.
 - Nunca toques las oportunidades Tier 3 (cannibalización, declive, gaps de
   contenido) — esas alimentan tu calendario editorial manual, no generan
-  PRs ni aquí ni en ningún otro sitio del SEO Agent.
+  PRs ni aquí ni en ningún otro sitio del SEO Agent. Para esas, analiza y
+  recomienda, pero no apliques ningún cambio de código sin que se te pida
+  explícitamente.
 
 ## Cadencia
 
