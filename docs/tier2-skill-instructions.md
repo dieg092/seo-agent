@@ -45,6 +45,17 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
    de medición y reversión sigue funcionando exactamente igual que antes
    — lo único que cambia es que ya no esperas una revisión previa al
    merge, no que dejes de vigilar el impacto después.
+6. Marca la `Opportunity` correspondiente como `status: "resolved"` (con
+   `resolvedAt: new Date()`) inmediatamente después de crear el
+   `AppliedChange`. Esto es específico de `internal-link-suggestion`: a
+   diferencia de los hallazgos de auditoría (robots, sitemap...), el
+   detector de enlazado interno (`computeLinkSuggestions.ts`) no
+   comprueba si el enlace ya existe en el contenido, así que la
+   oportunidad NUNCA se marcaría como resuelta sola en una ejecución
+   futura de `prioritize` — seguiría apareciendo en el briefing y en la
+   tarjeta "Trabajos sugeridos" del panel como si nada se hubiera hecho.
+   Si decides NO aplicar una sugerencia (paso 2), no toques su
+   `Opportunity`: déjala `open` para que se reevalúe la próxima vez.
 
 ## Qué NO hacer
 
