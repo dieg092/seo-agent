@@ -182,3 +182,14 @@ model Alert {
   @@index([acknowledged])
   @@schema("seo_agent")
 }
+
+model WorkflowHeartbeat {
+  id           String   @id @default(uuid())
+  workflowName String   @unique
+  lastRunAt    DateTime @default(now())
+  lastStatus   String
+  lastRunUrl   String?
+  updatedAt    DateTime @updatedAt
+
+  @@schema("seo_agent")
+}

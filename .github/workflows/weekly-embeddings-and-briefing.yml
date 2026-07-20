@@ -32,14 +32,21 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
-      - run: pnpm generate:embeddings
+      - id: generate-embeddings
+        run: pnpm generate:embeddings
         continue-on-error: true
-      - run: pnpm compute:link-suggestions
+      - id: compute-link-suggestions
+        run: pnpm compute:link-suggestions
         continue-on-error: true
-      - run: pnpm prioritize
-      - run: pnpm generate:tier2-briefing
+      - id: prioritize
+        run: pnpm prioritize
+      - id: generate-briefing
+        run: pnpm generate:tier2-briefing
       - uses: actions/upload-artifact@v4
         with:
           name: tier2-briefing
           path: tier2-briefing.md
           retention-days: 30
+      - name: Report workflow health
+        if: always()
+        run: pnpm exec tsx scripts/report-workflow-health.ts "weekly-embeddings-and-briefing" "${{ steps.generate-embeddings.outcome }},${{ steps.compute-link-suggestions.outcome }},${{ steps.prioritize.outcome }},${{ steps.generate-briefing.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

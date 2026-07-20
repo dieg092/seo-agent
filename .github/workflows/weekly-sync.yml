@@ -27,5 +27,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
-      - run: pnpm sync:applied-changes
-      - run: pnpm measure:applied-changes
+      - id: sync-applied-changes
+        run: pnpm sync:applied-changes
+      - id: measure-applied-changes
+        run: pnpm measure:applied-changes
+      - name: Report workflow health
+        if: always()
+        run: pnpm exec tsx scripts/report-workflow-health.ts "weekly-sync" "${{ steps.sync-applied-changes.outcome }},${{ steps.measure-applied-changes.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

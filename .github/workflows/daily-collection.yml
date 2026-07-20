@@ -32,17 +32,23 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
-      - run: pnpm collect:search-console
+      - id: collect-gsc
+        run: pnpm collect:search-console
         continue-on-error: true
-      - run: pnpm collect:analytics
+      - id: collect-ga4
+        run: pnpm collect:analytics
         continue-on-error: true
-      - run: pnpm audit:sitemap
+      - id: audit-sitemap
+        run: pnpm audit:sitemap
         continue-on-error: true
-      - run: pnpm audit:robots
+      - id: audit-robots
+        run: pnpm audit:robots
         continue-on-error: true
-      - run: pnpm audit:structured-data
+      - id: audit-structured-data
+        run: pnpm audit:structured-data
         continue-on-error: true
-      - name: Performance audit (weekly, Mondays only)
+      - id: audit-performance
+        name: Performance audit (weekly, Mondays only)
         run: |
           if [ "$(date -u +%u)" = "1" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             pnpm audit:performance
@@ -50,5 +56,10 @@ jobs:
             echo "Not Monday — skipping weekly performance audit."
           fi
         continue-on-error: true
-      - run: pnpm prioritize
-      - run: pnpm apply:tier1
+      - id: prioritize
+        run: pnpm prioritize
+      - id: apply-tier1
+        run: pnpm apply:tier1
+      - name: Report workflow health
+        if: always()
+        run: pnpm exec tsx scripts/report-workflow-health.ts "daily-collection" "${{ steps.collect-gsc.outcome }},${{ steps.collect-ga4.outcome }},${{ steps.audit-sitemap.outcome }},${{ steps.audit-robots.outcome }},${{ steps.audit-structured-data.outcome }},${{ steps.audit-performance.outcome }},${{ steps.prioritize.outcome }},${{ steps.apply-tier1.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

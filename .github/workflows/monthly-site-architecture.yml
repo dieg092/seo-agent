@@ -24,4 +24,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
-      - run: pnpm detect:site-architecture
+      - id: detect-site-architecture
+        run: pnpm detect:site-architecture
+      - name: Report workflow health
+        if: always()
+        run: pnpm exec tsx scripts/report-workflow-health.ts "monthly-site-architecture" "${{ steps.detect-site-architecture.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
