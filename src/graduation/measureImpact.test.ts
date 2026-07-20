@@ -78,7 +78,7 @@ test("measureAppliedChanges measures a robots-type change site-wide and incremen
       data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/a", query: "q", clicks: 12, impressions: 100, ctr: 0.12, position: 5 },
     });
 
-    const result = await measureAppliedChanges();
+    const result = await measureAppliedChanges({ alert: async () => {} });
 
     assert.equal(result.measured, 1);
     const measurement = await prisma.impactMeasurement.findUnique({ where: { appliedChangeId: change.id } });
@@ -124,7 +124,7 @@ test("measureAppliedChanges resets consecutiveGood and revokes autoMergeEligible
       data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/b", query: "q", clicks: 50, impressions: 500, ctr: 0.1, position: 6 },
     });
 
-    await measureAppliedChanges();
+    await measureAppliedChanges({ alert: async () => {} });
 
     const record = await prisma.graduationRecord.findUnique({ where: { findingType: "robots-blocks-all" } });
     assert.equal(record?.consecutiveGood, 0);
@@ -179,7 +179,7 @@ test("measureAppliedChanges measures an internal-link-suggestion change against 
       data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page, query: "q", clicks: 25, impressions: 100, ctr: 0.25, position: 3 },
     });
 
-    const result = await measureAppliedChanges();
+    const result = await measureAppliedChanges({ alert: async () => {} });
 
     assert.equal(result.measured, 1);
     const measurement = await prisma.impactMeasurement.findUnique({ where: { appliedChangeId: change.id } });
@@ -206,7 +206,7 @@ test("measureAppliedChanges skips changes merged less than 14 days ago", async (
     });
     // Freshly created — updatedAt is "now", well within the 14-day cooldown.
 
-    const result = await measureAppliedChanges();
+    const result = await measureAppliedChanges({ alert: async () => {} });
 
     assert.equal(result.measured, 0);
     const measurement = await prisma.impactMeasurement.findUnique({ where: { appliedChangeId: change.id } });
@@ -246,7 +246,7 @@ test("measureAppliedChanges reports newly-graduated findingTypes and does not re
       data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
     });
 
-    const result = await measureAppliedChanges();
+    const result = await measureAppliedChanges({ alert: async () => {} });
 
     assert.deepEqual(result.graduated, ["robots-blocks-all"]);
     const record = await prisma.graduationRecord.findUnique({ where: { findingType: "robots-blocks-all" } });
