@@ -6,8 +6,26 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
 
 ## Qué hacer
 
-1. Lee `tier2-briefing.md` completo.
-2. Para cada sugerencia de enlazado interno (`internal-link-suggestion`):
+1. Cubre el **100% de las oportunidades abiertas** de este tipo en la
+   ejecución, no una muestra. Antes de empezar, cuenta cuántas hay
+   (`prisma.opportunity.count({ where: { status: "open", source:
+   "internalLinking" } })` o el número que muestra la tarjeta del panel) y
+   ve tachándolas mentalmente conforme avances. Si el volumen es grande
+   para una sola sesión, sigue en tandas hasta llegar a todas — no pares a
+   medias sin decirlo. Cada oportunidad debe terminar en uno de tres
+   estados, nunca en "no la miré": aplicada (pasos 4-7), rechazada por
+   falta de frase natural (se queda abierta, ver paso 3), o descartada por
+   el tope de enlaces por artículo (paso 2) — pero incluso en ese caso hay
+   que haberla leído y comparado con las demás candidatas del mismo
+   artículo origen antes de descartarla, no saltarla sin mirar.
+2. Para no sobre-enlazar un mismo artículo, aplica como máximo 2-3 enlaces
+   salientes nuevos por artículo origen en una misma pasada, priorizando
+   las candidatas con mejor encaje editorial (no solo mayor similitud). Si
+   un artículo origen tiene más candidatas de las que vas a aplicar,
+   decide explícitamente cuáles son las mejores 2-3 tras leer todas sus
+   opciones — no cojas las primeras por orden de aparición en el
+   briefing.
+3. Para cada sugerencia de enlazado interno (`internal-link-suggestion`):
    - Lee el texto de ambos artículos (ya incluido en el briefing).
    - Decide si el enlace tiene sentido editorial real — no te fíes solo
      de la puntuación de similitud, esa parte ya la hizo el pipeline
@@ -21,23 +39,23 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
      "rechazarla" explícitamente — si el pipeline determinista la sigue
      detectando la próxima semana, simplemente evalúala de nuevo con el
      mismo criterio).
-3. Para cada enlace que decidas proponer, usa el cliente de GitHub ya
+4. Para cada enlace que decidas proponer, usa el cliente de GitHub ya
    construido en la Fase 3 (`src/tier1/github.ts`, función
    `openPullRequestWithFileChange`) para abrir un PR contra
    `wedding-invite-2`. El archivo a modificar es el contenido del
    artículo origen — confirma primero la ruta exacta del archivo (los
    artículos viven en `src/lib/blog/content/<categoría>/<slug>.ts` en el
    repo `wedding-invite-2`, contienen el markdown embebido).
-4. Mergea el PR tú mismo inmediatamente tras abrirlo (usando
+5. Mergea el PR tú mismo inmediatamente tras abrirlo (usando
    `mergePullRequest` de `src/tier1/github.ts`) — no lo dejes esperando
-   revisión. La decisión editorial (paso 2) ya es el filtro humano; una
+   revisión. La decisión editorial (paso 3) ya es el filtro humano; una
    vez tomada, aplicar el cambio de inmediato es lo que se pide
    explícitamente al lanzar esta revisión (revisado 2026-07-20, ya no
    depende de si `internal-link-suggestion` está graduado — se aplica
    siempre, para cualquier PR que abras en este flujo).
-5. Registra el PR (ya mergeado) como un `AppliedChange` con `status:
+6. Registra el PR (ya mergeado) como un `AppliedChange` con `status:
    "merged"` y `findingType: "internal-link-suggestion"`. Guarda también
-   `filePath` (la ruta exacta del archivo que confirmaste en el paso 3) y
+   `filePath` (la ruta exacta del archivo que confirmaste en el paso 4) y
    `previousContent` (el contenido completo del artículo ANTES de tu
    edición, tal cual lo leíste) — esto es lo que permite abrir un PR de
    reversión automático si más adelante `measure-applied-changes`
@@ -45,7 +63,7 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
    de medición y reversión sigue funcionando exactamente igual que antes
    — lo único que cambia es que ya no esperas una revisión previa al
    merge, no que dejes de vigilar el impacto después.
-6. Marca la `Opportunity` correspondiente como `status: "resolved"` (con
+7. Marca la `Opportunity` correspondiente como `status: "resolved"` (con
    `resolvedAt: new Date()`) inmediatamente después de crear el
    `AppliedChange`. Esto es específico de `internal-link-suggestion`: a
    diferencia de los hallazgos de auditoría (robots, sitemap...), el
@@ -54,7 +72,7 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
    oportunidad NUNCA se marcaría como resuelta sola en una ejecución
    futura de `prioritize` — seguiría apareciendo en el briefing y en la
    tarjeta "Trabajos sugeridos" del panel como si nada se hubiera hecho.
-   Si decides NO aplicar una sugerencia (paso 2), no toques su
+   Si decides NO aplicar una sugerencia (paso 3), no toques su
    `Opportunity`: déjala `open` para que se reevalúe la próxima vez.
 
 ## Qué NO hacer
