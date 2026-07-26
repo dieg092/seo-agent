@@ -1,0 +1,34 @@
+name: wedding-invite-2 cron watchdog
+
+on:
+  schedule:
+    # 10:30 UTC — ~1h45 después del cron de wedding-invite-2 (08:45 UTC),
+    # margen de sobra para cualquier retraso normal de GitHub Actions.
+    - cron: "30 10 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      WEDDING_INVITE_2_PAT: ${{ secrets.WEDDING_INVITE_2_PAT }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Sin esto, un bloqueo que impide arrancar el runner de
+      # wedding-invite-2 (p. ej. el problema de facturación de la cuenta)
+      # deja su propio cron en total silencio: ningún paso de ESE workflow
+      # llega a ejecutarse, ni el que manda el aviso de fallo a Telegram.
+      - name: Check wedding-invite-2 daily-health-checks heartbeat
+        run: pnpm exec tsx scripts/check-external-workflow-heartbeat.ts ${{ vars.TARGET_REPO_OWNER }} ${{ vars.TARGET_REPO_NAME }} daily-health-checks.yml
