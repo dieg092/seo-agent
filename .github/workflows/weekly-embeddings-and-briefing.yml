@@ -21,6 +21,8 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID_3: ${{ secrets.CLOUDFLARE_ACCOUNT_ID_3 }}
       CLOUDFLARE_WORKER_AI_API_TOKEN_4: ${{ secrets.CLOUDFLARE_WORKER_AI_API_TOKEN_4 }}
       CLOUDFLARE_ACCOUNT_ID_4: ${{ secrets.CLOUDFLARE_ACCOUNT_ID_4 }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v6
@@ -47,6 +49,30 @@ jobs:
           name: tier2-briefing
           path: tier2-briefing.md
           retention-days: 30
+
+      # Failure already gets a Telegram alert via recordAlert() inside "Report
+      # workflow health" below, so this only fires on success — but it fires
+      # every week even at zero tasks. That's the point: a week of silence
+      # from this workflow should never be confused with "nothing to do".
+      - name: Build Tier 2 task-count message
+        id: tier2-message
+        if: steps.generate-briefing.outcome == 'success'
+        run: |
+          if grep -q "No hay oportunidades Tier 2 abiertas" tier2-briefing.md; then
+            echo "text=✅ <b>SEO Agent</b>: sin tareas Tier 2 pendientes esta semana — todo al día." >> "$GITHUB_OUTPUT"
+          else
+            COUNT=$(grep -oE '^[0-9]+ oportunidades' tier2-briefing.md | head -1 | grep -oE '^[0-9]+')
+            echo "text=📋 <b>SEO Agent</b>: ${COUNT:-?} tareas Tier 2 pendientes esta semana. ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify Telegram (Tier 2 briefing)
+        if: steps.generate-briefing.outcome == 'success'
+        uses: ./.github/actions/notify-telegram
+        with:
+          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
+          message: ${{ steps.tier2-message.outputs.text }}
+
       - name: Report workflow health
         if: always()
         run: pnpm exec tsx scripts/report-workflow-health.ts "weekly-embeddings-and-briefing" "${{ steps.generate-embeddings.outcome }},${{ steps.compute-link-suggestions.outcome }},${{ steps.prioritize.outcome }},${{ steps.generate-briefing.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

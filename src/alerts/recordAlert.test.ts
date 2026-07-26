@@ -19,3 +19,21 @@ test("recordAlert creates an unacknowledged Alert row with the given type/subjec
 
   await prisma.alert.delete({ where: { id: alert!.id } });
 });
+
+test("recordAlert notifies Telegram with the subject/body and never throws if that fails", async () => {
+  let notifiedText: string | undefined;
+  await recordAlert({
+    type: "negative-impact",
+    subject: "Telegram subject",
+    body: "Telegram body",
+    notify: async (text) => {
+      notifiedText = text;
+      throw new Error("Telegram is down");
+    },
+  });
+
+  assert.match(notifiedText!, /Telegram subject/);
+  assert.match(notifiedText!, /Telegram body/);
+
+  await prisma.alert.deleteMany({ where: { subject: "Telegram subject" } });
+});
