@@ -32,3 +32,11 @@ jobs:
       # llega a ejecutarse, ni el que manda el aviso de fallo a Telegram.
       - name: Check wedding-invite-2 daily-health-checks heartbeat
         run: pnpm exec tsx scripts/check-external-workflow-heartbeat.ts ${{ vars.TARGET_REPO_OWNER }} ${{ vars.TARGET_REPO_NAME }} daily-health-checks.yml
+
+      # Ping a healthchecks.io: si ESTE workflow (o todo seo-agent) deja de
+      # correr, healthchecks.io lo detecta por ausencia de ping y avisa por
+      # su cuenta — sin depender de que ningún job de GitHub Actions llegue
+      # a ejecutarse. Solo se pinga si el check anterior tuvo éxito.
+      - name: Ping healthchecks.io
+        if: success()
+        run: curl -fsS -m 10 --retry 3 "${{ secrets.HEALTHCHECKS_PING_URL }}" || true
