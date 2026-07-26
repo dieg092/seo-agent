@@ -65,3 +65,25 @@ jobs:
       - name: Report workflow health
         if: always()
         run: pnpm exec tsx scripts/report-workflow-health.ts "daily-collection" "${{ steps.collect-gsc.outcome }},${{ steps.collect-ga4.outcome }},${{ steps.audit-sitemap.outcome }},${{ steps.audit-robots.outcome }},${{ steps.audit-structured-data.outcome }},${{ steps.audit-performance.outcome }},${{ steps.prioritize.outcome }},${{ steps.apply-tier1.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      # Uses job.status (not individual step outcomes) so a run is reported
+      # even if it dies before "Report workflow health" — e.g. pnpm install
+      # or db:generate failing outright. That step's recordAlert() call can
+      # only fire once code actually runs; job.status is set by the runner
+      # regardless of where the job died, so this always sends exactly one
+      # message per run — silence is never the only signal something broke.
+      - name: Build Telegram message
+        id: telegram-message
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then EMOJI="✅"; else EMOJI="❌"; fi
+          echo "text=$EMOJI <b>seo-agent</b>: daily-collection — $STATUS. ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Telegram
+        if: always()
+        uses: ./.github/actions/notify-telegram
+        with:
+          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
+          message: ${{ steps.telegram-message.outputs.text }}

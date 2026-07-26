@@ -31,3 +31,19 @@ jobs:
       - name: Report workflow health
         if: always()
         run: pnpm exec tsx scripts/report-workflow-health.ts "monthly-site-architecture" "${{ steps.detect-site-architecture.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Build Telegram message
+        id: telegram-message
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then EMOJI="✅"; else EMOJI="❌"; fi
+          echo "text=$EMOJI <b>seo-agent</b>: monthly-site-architecture — $STATUS. ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Telegram
+        if: always()
+        uses: ./.github/actions/notify-telegram
+        with:
+          bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
+          message: ${{ steps.telegram-message.outputs.text }}

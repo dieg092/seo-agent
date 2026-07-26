@@ -50,15 +50,20 @@ jobs:
           path: tier2-briefing.md
           retention-days: 30
 
-      # Failure already gets a Telegram alert via recordAlert() inside "Report
-      # workflow health" below, so this only fires on success — but it fires
-      # every week even at zero tasks. That's the point: a week of silence
-      # from this workflow should never be confused with "nothing to do".
+      # Driven by job.status (not steps.generate-briefing.outcome) so a run
+      # always sends exactly one message — even if the job dies before
+      # generate-briefing ever runs (e.g. pnpm install/db:generate failing
+      # outright). Silence must never be the only signal something broke.
       - name: Build Tier 2 task-count message
         id: tier2-message
-        if: steps.generate-briefing.outcome == 'success'
+        if: always()
         run: |
-          if grep -q "No hay oportunidades Tier 2 abiertas" tier2-briefing.md; then
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" != "success" ]; then
+            echo "text=❌ <b>seo-agent</b>: weekly-embeddings-and-briefing — $STATUS. ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+          elif [ ! -f tier2-briefing.md ]; then
+            echo "text=✅ <b>seo-agent</b>: weekly-embeddings-and-briefing — success (sin tier2-briefing.md). ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+          elif grep -q "No hay oportunidades Tier 2 abiertas" tier2-briefing.md; then
             echo "text=✅ <b>SEO Agent</b>: sin tareas Tier 2 pendientes esta semana — todo al día." >> "$GITHUB_OUTPUT"
           else
             COUNT=$(grep -oE '^[0-9]+ oportunidades' tier2-briefing.md | head -1 | grep -oE '^[0-9]+')
@@ -66,7 +71,7 @@ jobs:
           fi
 
       - name: Notify Telegram (Tier 2 briefing)
-        if: steps.generate-briefing.outcome == 'success'
+        if: always()
         uses: ./.github/actions/notify-telegram
         with:
           bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
