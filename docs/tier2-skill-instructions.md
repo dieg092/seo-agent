@@ -51,30 +51,51 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
      actual del artículo; solo vuelve a aparecer si el artículo cambia de
      verdad (nuevo `contentHash`), momento en el que la revisión anterior
      ya no aplica y hay que evaluarla de nuevo con el mismo criterio.
-4. Para cada enlace que decidas proponer, usa el cliente de GitHub ya
-   construido en la Fase 3 (`src/tier1/github.ts`, función
-   `openPullRequestWithFileChange`) para abrir un PR contra
-   `wedding-invite-2`. El archivo a modificar es el contenido del
-   artículo origen — confirma primero la ruta exacta del archivo (los
-   artículos viven en `src/lib/blog/content/<categoría>/<slug>.ts` en el
-   repo `wedding-invite-2`, contienen el markdown embebido).
-5. Mergea el PR tú mismo inmediatamente tras abrirlo (usando
+4. **Un único PR por sesión, no uno por enlace** (corregido 2026-07-29:
+   la primera pasada de este flujo abrió 29 PRs, cada merge disparó un
+   deploy de producción en Vercel y encoló decenas de builds — no vuelvas
+   a hacer eso). Antes de tocar GitHub, aplica en local/memoria todas las
+   ediciones que vayas aprobando para cada artículo origen. Cuando tengas
+   el lote completo de la sesión decidido (todas las oportunidades ya
+   evaluadas, aplicadas o rechazadas), usa el cliente de GitHub construido
+   en la Fase 3 (`src/tier1/github.ts`) para escribir **una sola rama**
+   contra `wedding-invite-2`:
+   - Crea la rama una vez a partir de `main` (`git/refs`).
+   - Para cada artículo con al menos un enlace aprobado, sube su
+     contenido final (con todos sus enlaces nuevos ya insertados) a esa
+     misma rama con una llamada a `contents` por archivo — no crees una
+     rama nueva ni un PR por cada enlace individual, ni siquiera uno por
+     artículo. `openPullRequestWithFileChange` crea rama + PR en la misma
+     llamada, así que para esto solo reutiliza la parte de `contents`
+     (o añade una función de commit-a-rama-existente si hace falta) y
+     deja la apertura de PR para el final.
+   - El archivo a modificar es el contenido del artículo origen —
+     confirma primero la ruta exacta (los artículos viven en
+     `src/lib/blog/content/<categoría>/<slug>.ts` en `wedding-invite-2`,
+     contienen el markdown embebido).
+5. Abre **un único PR** al final, con todos los artículos modificados de
+   la sesión, y mergéalo tú mismo inmediatamente (usando
    `mergePullRequest` de `src/tier1/github.ts`) — no lo dejes esperando
    revisión. La decisión editorial (paso 3) ya es el filtro humano; una
-   vez tomada, aplicar el cambio de inmediato es lo que se pide
-   explícitamente al lanzar esta revisión (revisado 2026-07-20, ya no
-   depende de si `internal-link-suggestion` está graduado — se aplica
-   siempre, para cualquier PR que abras en este flujo).
-6. Registra el PR (ya mergeado) como un `AppliedChange` con `status:
-   "merged"` y `findingType: "internal-link-suggestion"`. Guarda también
-   `filePath` (la ruta exacta del archivo que confirmaste en el paso 4) y
-   `previousContent` (el contenido completo del artículo ANTES de tu
-   edición, tal cual lo leíste) — esto es lo que permite abrir un PR de
-   reversión automático si más adelante `measure-applied-changes`
-   detecta que el enlace tuvo impacto negativo (Fase 6). Este mecanismo
-   de medición y reversión sigue funcionando exactamente igual que antes
-   — lo único que cambia es que ya no esperas una revisión previa al
-   merge, no que dejes de vigilar el impacto después.
+   vez tomada para todo el lote, aplicar el cambio de inmediato es lo que
+   se pide explícitamente al lanzar esta revisión (revisado 2026-07-20,
+   ya no depende de si `internal-link-suggestion` está graduado — se
+   aplica siempre). Lo que cambia el 2026-07-29 es solo la agrupación en
+   un PR/merge por sesión en vez de por enlace — un solo deploy de
+   Vercel por sesión, no uno por cada enlace añadido.
+6. Registra cada enlace aplicado como un `AppliedChange` propio con
+   `status: "merged"` y `findingType: "internal-link-suggestion"`, aunque
+   varios compartan el mismo `prUrl`/`prNumber` del PR único del paso 5 —
+   la granularidad de `AppliedChange` sigue siendo una por oportunidad,
+   solo el PR que las agrupa es compartido. Guarda también `filePath` (la
+   ruta exacta del archivo) y `previousContent` (el contenido completo
+   del artículo ANTES de tu edición, tal cual lo leíste, no el contenido
+   ya con otros enlaces de la misma sesión aplicados) — esto es lo que
+   permite abrir un PR de reversión automático si más adelante
+   `measure-applied-changes` detecta que el enlace tuvo impacto negativo
+   (Fase 6). Este mecanismo de medición y reversión sigue funcionando
+   igual — lo único que cambia es que el PR que referencia puede contener
+   también otros enlaces, no que dejes de vigilar el impacto después.
 7. Marca la `Opportunity` correspondiente como `status: "resolved"` (con
    `resolvedAt: new Date()`) inmediatamente después de crear el
    `AppliedChange`. Esto es específico de `internal-link-suggestion`: a
@@ -98,6 +119,11 @@ o descargado como artifact del workflow `weekly-embeddings-and-briefing`).
   PRs ni aquí ni en ningún otro sitio del SEO Agent. Para esas, analiza y
   recomienda, pero no apliques ningún cambio de código sin que se te pida
   explícitamente.
+- Nunca abras ni mergees un PR por cada enlace. Cada merge a `main` en
+  `wedding-invite-2` dispara un deploy de producción en Vercel; abrir y
+  mergear PR a PR en una sesión con muchas oportunidades encola un deploy
+  por cada uno. Acumula todos los enlaces aprobados de la sesión y ciérralo
+  con un único PR/merge al final (ver paso 4-5).
 
 ## Cadencia
 
