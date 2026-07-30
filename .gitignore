@@ -4,3 +4,5 @@ dist
 *.log
 .superpowers
 tier2-briefing.md
+
+.worktrees/
