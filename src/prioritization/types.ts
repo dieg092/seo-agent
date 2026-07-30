@@ -29,6 +29,9 @@ export type FindingType =
   | "content-cannibalization"
   | "content-declining"
   | "content-query-gap"
+  | "content-low-ctr"
+  | "content-near-page1"
+  | "content-high-impression-low-position"
   | "site-architecture-template-performance"
   | "site-architecture-near-duplicate"
   | "site-architecture-missing-template";

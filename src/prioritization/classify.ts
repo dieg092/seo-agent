@@ -1,5 +1,6 @@
 // src/prioritization/classify.ts
 import type { Finding } from "./types";
+import { expectedCtrForPosition } from "./expectedCtr";
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? (value as string[]) : [];
@@ -354,6 +355,108 @@ export function extractSiteArchitectureFindings(deps: {
       title: `"${candidate.province}" tiene ${candidate.impressions} impresiones sin página provincial dedicada`,
       detail: candidate,
       sourceRefId: candidate.province,
+    });
+  }
+
+  return findings;
+}
+
+// Sección A del brief: CTR bajo en primera página. Página ya posiciona 1-10
+// pero se clickea muy por debajo de lo esperado para esa posición — el arreglo
+// típico es title/meta description/H1, no contenido nuevo.
+const LOW_CTR_MIN_IMPRESSIONS = 20;
+const LOW_CTR_MIN_POSITION = 1;
+const LOW_CTR_MAX_POSITION = 10;
+const LOW_CTR_RATIO_THRESHOLD = 0.6;
+
+export function extractLowCtrFindings(
+  rows: { page: string; impressions: number; clicks: number; avgPosition: number }[]
+): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const row of rows) {
+    if (row.impressions < LOW_CTR_MIN_IMPRESSIONS) continue;
+    if (row.avgPosition < LOW_CTR_MIN_POSITION || row.avgPosition > LOW_CTR_MAX_POSITION) continue;
+
+    const ctr = row.impressions > 0 ? row.clicks / row.impressions : 0;
+    const expected = expectedCtrForPosition(row.avgPosition);
+    if (ctr < expected * LOW_CTR_RATIO_THRESHOLD) {
+      findings.push({
+        source: "content",
+        findingType: "content-low-ctr",
+        stableKeyInput: `content-low-ctr:${row.page}`,
+        title: `${row.page} tiene CTR ${(ctr * 100).toFixed(2)}% en posición ${row.avgPosition.toFixed(1)} (esperado ${(expected * 100).toFixed(2)}%)`,
+        detail: { page: row.page, impressions: row.impressions, clicks: row.clicks, avgPosition: row.avgPosition, ctr, expectedCtr: expected },
+        sourceRefId: row.page,
+      });
+    }
+  }
+
+  return findings;
+}
+
+// Sección B del brief: páginas cerca de primera página (11-20) con impresiones
+// que no caen. El arreglo típico es ampliar contenido/FAQs/enlazado, no solo el title.
+const NEAR_PAGE1_MIN_IMPRESSIONS = 30;
+const NEAR_PAGE1_MIN_POSITION = 11;
+const NEAR_PAGE1_MAX_POSITION = 20;
+
+export function extractNearPage1Findings(
+  current: { page: string; impressions: number; avgPosition: number }[],
+  prior: { page: string; impressions: number }[]
+): Finding[] {
+  const findings: Finding[] = [];
+  const priorByPage = new Map(prior.map((row) => [row.page, row.impressions]));
+
+  for (const row of current) {
+    if (row.impressions < NEAR_PAGE1_MIN_IMPRESSIONS) continue;
+    if (row.avgPosition < NEAR_PAGE1_MIN_POSITION || row.avgPosition > NEAR_PAGE1_MAX_POSITION) continue;
+
+    // Sin dato del periodo anterior, no hay caída que descartar: se trata como
+    // tendencia estable/creciente (página nueva o que antes no tenía impresiones).
+    const priorImpressions = priorByPage.get(row.page) ?? 0;
+    if (row.impressions < priorImpressions) continue;
+
+    findings.push({
+      source: "content",
+      findingType: "content-near-page1",
+      stableKeyInput: `content-near-page1:${row.page}`,
+      title: `${row.page} está en posición ${row.avgPosition.toFixed(1)} con ${row.impressions} impresiones — cerca de primera página`,
+      detail: { page: row.page, impressions: row.impressions, avgPosition: row.avgPosition, priorImpressions },
+      sourceRefId: row.page,
+    });
+  }
+
+  return findings;
+}
+
+// Sección C del brief: posiciones 21-40 con impresiones altas. Nunca se
+// resuelve solo cambiando el título — requiere revisar profundidad de
+// contenido, subintenciones, enlazado interno y posible canibalización.
+const HIGH_IMPRESSION_LOW_POSITION_MIN_IMPRESSIONS = 75;
+const HIGH_IMPRESSION_LOW_POSITION_MIN_POSITION = 21;
+const HIGH_IMPRESSION_LOW_POSITION_MAX_POSITION = 40;
+
+export function extractHighImpressionLowPositionFindings(
+  rows: { page: string; impressions: number; avgPosition: number }[]
+): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const row of rows) {
+    if (row.impressions < HIGH_IMPRESSION_LOW_POSITION_MIN_IMPRESSIONS) continue;
+    if (
+      row.avgPosition < HIGH_IMPRESSION_LOW_POSITION_MIN_POSITION ||
+      row.avgPosition > HIGH_IMPRESSION_LOW_POSITION_MAX_POSITION
+    )
+      continue;
+
+    findings.push({
+      source: "content",
+      findingType: "content-high-impression-low-position",
+      stableKeyInput: `content-high-impression-low-position:${row.page}`,
+      title: `${row.page} tiene ${row.impressions} impresiones pero posición ${row.avgPosition.toFixed(1)} — requiere análisis de profundidad de contenido`,
+      detail: { page: row.page, impressions: row.impressions, avgPosition: row.avgPosition },
+      sourceRefId: row.page,
     });
   }
 

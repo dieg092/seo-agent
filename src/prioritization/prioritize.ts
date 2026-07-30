@@ -8,6 +8,9 @@ import {
   extractCannibalizationFindings,
   extractDecliningFindings,
   extractQueryGapFindings,
+  extractLowCtrFindings,
+  extractNearPage1Findings,
+  extractHighImpressionLowPositionFindings,
 } from "./classify";
 import { getHeuristic } from "./heuristics";
 import { computeStableKey } from "./stableKey";
@@ -29,6 +32,27 @@ function aggregateClicksByPage(rows: { page: string; clicks: number }[]): { page
     totals.set(row.page, (totals.get(row.page) ?? 0) + row.clicks);
   }
   return Array.from(totals.entries()).map(([page, clicks]) => ({ page, clicks }));
+}
+
+// Agregado por página con posición media ponderada por impresiones, usado por
+// los detectores de CTR/posición (Secciones A/B/C del brief).
+function aggregatePageStats(
+  rows: { page: string; clicks: number; impressions: number; position: number }[]
+): { page: string; clicks: number; impressions: number; avgPosition: number }[] {
+  const totals = new Map<string, { clicks: number; impressions: number; posWeighted: number }>();
+  for (const row of rows) {
+    const cur = totals.get(row.page) ?? { clicks: 0, impressions: 0, posWeighted: 0 };
+    cur.clicks += row.clicks;
+    cur.impressions += row.impressions;
+    cur.posWeighted += row.position * row.impressions;
+    totals.set(row.page, cur);
+  }
+  return Array.from(totals.entries()).map(([page, s]) => ({
+    page,
+    clicks: s.clicks,
+    impressions: s.impressions,
+    avgPosition: s.impressions > 0 ? s.posWeighted / s.impressions : 0,
+  }));
 }
 
 export async function computeCurrentFindings(): Promise<Finding[]> {
@@ -91,6 +115,26 @@ export async function computeCurrentFindings(): Promise<Finding[]> {
       recentSnapshots.map((r) => ({ page: r.page, query: r.query, impressions: r.impressions, clicks: r.clicks, position: r.position }))
     )
   );
+
+  // Ventanas de 28 días (no 14, como el resto de este archivo) porque así lo
+  // fija el brief para los umbrales de impresiones de las Secciones A/B/C.
+  const recent28dSnapshots = await prisma.searchConsoleSnapshot.findMany({
+    where: { date: { gte: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000) } },
+  });
+  const prior28dSnapshots = await prisma.searchConsoleSnapshot.findMany({
+    where: {
+      date: {
+        gte: new Date(Date.now() - 56 * 24 * 60 * 60 * 1000),
+        lt: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000),
+      },
+    },
+  });
+  const recentPageStats = aggregatePageStats(recent28dSnapshots);
+  const priorPageStats = aggregatePageStats(prior28dSnapshots);
+
+  findings.push(...extractLowCtrFindings(recentPageStats));
+  findings.push(...extractNearPage1Findings(recentPageStats, priorPageStats));
+  findings.push(...extractHighImpressionLowPositionFindings(recentPageStats));
 
   return findings;
 }

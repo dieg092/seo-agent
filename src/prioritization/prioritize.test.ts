@@ -300,3 +300,40 @@ test("computeCurrentFindings includes cannibalization findings computed from rec
 
   await resetAuditTables();
 });
+
+test("computeCurrentFindings includes a content-low-ctr finding for a page ranking 1-10 with CTR well below expected", async () => {
+  await resetAuditTables();
+
+  await withEmptySearchConsoleSnapshots(async () => {
+    const today = new Date();
+    // posición 5 → CTR esperado 6%; 0 clics de 25 impresiones está muy por debajo.
+    await prisma.searchConsoleSnapshot.create({
+      data: { date: today, page: "/blog/low-ctr-page", query: "q", clicks: 0, impressions: 25, ctr: 0, position: 5 },
+    });
+
+    const findings = await computeCurrentFindings();
+    const lowCtrFindings = findings.filter((f) => f.findingType === "content-low-ctr" && f.sourceRefId === "/blog/low-ctr-page");
+    assert.equal(lowCtrFindings.length, 1);
+  });
+
+  await resetAuditTables();
+});
+
+test("computeCurrentFindings includes a content-high-impression-low-position finding for a page in position 21-40 with 75+ impressions", async () => {
+  await resetAuditTables();
+
+  await withEmptySearchConsoleSnapshots(async () => {
+    const today = new Date();
+    await prisma.searchConsoleSnapshot.create({
+      data: { date: today, page: "/blog/buried-page", query: "q", clicks: 0, impressions: 80, ctr: 0, position: 30 },
+    });
+
+    const findings = await computeCurrentFindings();
+    const buried = findings.filter(
+      (f) => f.findingType === "content-high-impression-low-position" && f.sourceRefId === "/blog/buried-page"
+    );
+    assert.equal(buried.length, 1);
+  });
+
+  await resetAuditTables();
+});

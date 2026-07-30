@@ -51,6 +51,16 @@ test("getHeuristic returns a value for the 4 new finding types without throwing"
   }
 });
 
+test("getHeuristic returns a value for the 3 CTR/position finding types without throwing", () => {
+  const newTypes = ["content-low-ctr", "content-near-page1", "content-high-impression-low-position"] as const;
+
+  for (const type of newTypes) {
+    const result = getHeuristic(type);
+    assert.ok(result.impactScore >= 1 && result.impactScore <= 10);
+    assert.ok(result.effortScore >= 1 && result.effortScore <= 10);
+  }
+});
+
 test("getHeuristic returns a value for the 3 site-architecture finding types without throwing", () => {
   const newTypes = [
     "site-architecture-template-performance",

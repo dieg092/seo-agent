@@ -11,6 +11,9 @@ import {
   extractDecliningFindings,
   extractQueryGapFindings,
   extractSiteArchitectureFindings,
+  extractLowCtrFindings,
+  extractNearPage1Findings,
+  extractHighImpressionLowPositionFindings,
 } from "./classify";
 
 test("extractSitemapFindings classifies a malformed-XML error", () => {
@@ -222,4 +225,103 @@ test("extractSiteArchitectureFindings creates one finding per missing-template c
 
   assert.equal(findings.length, 1);
   assert.equal(findings[0].findingType, "site-architecture-missing-template");
+});
+
+test("extractLowCtrFindings flags a page ranking 1-10 with CTR below 60% of expected", () => {
+  // posición 5 → CTR esperado 6%; 60% de eso es 3.6%. Con 0 clics de 25
+  // impresiones el CTR real es 0%, muy por debajo del umbral.
+  const findings = extractLowCtrFindings([
+    { page: "/blog/a", impressions: 25, clicks: 0, avgPosition: 5 },
+  ]);
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].findingType, "content-low-ctr");
+  assert.equal(findings[0].source, "content");
+  assert.equal(findings[0].sourceRefId, "/blog/a");
+});
+
+test("extractLowCtrFindings does not flag a page whose CTR already meets or beats expectations", () => {
+  const findings = extractLowCtrFindings([
+    { page: "/blog/a", impressions: 25, clicks: 2, avgPosition: 5 }, // 8% CTR, esperado 6%
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractLowCtrFindings ignores pages below the impressions floor even with a real CTR gap", () => {
+  const findings = extractLowCtrFindings([
+    { page: "/blog/a", impressions: 15, clicks: 0, avgPosition: 5 },
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractLowCtrFindings ignores pages outside the position 1-10 band", () => {
+  const findings = extractLowCtrFindings([
+    { page: "/blog/a", impressions: 100, clicks: 0, avgPosition: 15 },
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractNearPage1Findings flags a page in position 11-20 with enough impressions and a non-declining trend", () => {
+  const findings = extractNearPage1Findings(
+    [{ page: "/blog/a", impressions: 40, avgPosition: 14 }],
+    [{ page: "/blog/a", impressions: 35 }]
+  );
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].findingType, "content-near-page1");
+});
+
+test("extractNearPage1Findings treats a page with no prior-period data as trend ok (new/growing)", () => {
+  const findings = extractNearPage1Findings([{ page: "/blog/a", impressions: 40, avgPosition: 14 }], []);
+
+  assert.equal(findings.length, 1);
+});
+
+test("extractNearPage1Findings does not flag a page whose impressions are declining", () => {
+  const findings = extractNearPage1Findings(
+    [{ page: "/blog/a", impressions: 30, avgPosition: 14 }],
+    [{ page: "/blog/a", impressions: 60 }]
+  );
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractNearPage1Findings ignores pages below the impressions floor", () => {
+  const findings = extractNearPage1Findings([{ page: "/blog/a", impressions: 20, avgPosition: 14 }], []);
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractNearPage1Findings ignores pages outside the position 11-20 band", () => {
+  const findings = extractNearPage1Findings([{ page: "/blog/a", impressions: 40, avgPosition: 8 }], []);
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractHighImpressionLowPositionFindings flags a page in position 21-40 with 75+ impressions", () => {
+  const findings = extractHighImpressionLowPositionFindings([
+    { page: "/blog/a", impressions: 80, avgPosition: 30 },
+  ]);
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].findingType, "content-high-impression-low-position");
+});
+
+test("extractHighImpressionLowPositionFindings ignores pages below the impressions floor", () => {
+  const findings = extractHighImpressionLowPositionFindings([
+    { page: "/blog/a", impressions: 50, avgPosition: 30 },
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractHighImpressionLowPositionFindings ignores pages outside the position 21-40 band", () => {
+  const findings = extractHighImpressionLowPositionFindings([
+    { page: "/blog/a", impressions: 200, avgPosition: 45 },
+  ]);
+
+  assert.equal(findings.length, 0);
 });
