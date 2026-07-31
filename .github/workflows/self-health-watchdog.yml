@@ -1,0 +1,49 @@
+name: self-health watchdog
+
+# Antes vigilaba el cron de wedding-invite-2 (daily-health-checks.yml).
+# Se retiró 2026-07-31: wedding-invite-2 no paga GitHub Actions (decisión
+# de negocio, no un fallo), así que ese workflow no vuelve a correr nunca
+# — vigilarlo solo generaba una alerta diaria falsa-positiva sin acción
+# posible, entrenando a ignorar Telegram (fatiga de alertas). Ahora vigila
+# el propio daily-collection.yml de este repo: es la señal real que
+# importa, porque es el job del que depende todo lo demás (Opportunities,
+# fixes de Tier 1, snapshots de Search Console/GA4). Si esto deja de
+# correr, sí hay algo que hacer.
+
+on:
+  schedule:
+    # 07:30 UTC — 1h30 después de daily-collection.yml (06:00 UTC).
+    - cron: "30 7 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check daily-collection.yml heartbeat (este mismo repo)
+        run: pnpm exec tsx scripts/check-external-workflow-heartbeat.ts ${{ github.repository_owner }} seo-agent daily-collection.yml
+
+      # Ping a healthchecks.io: si ESTE workflow deja de correr,
+      # healthchecks.io lo detecta por ausencia de ping y avisa por su
+      # cuenta — sin depender de que ningún job de GitHub Actions llegue a
+      # ejecutarse. Solo se pinga si el check anterior tuvo éxito.
+      - name: Ping healthchecks.io
+        if: success()
+        run: curl -fsS -m 10 --retry 3 "${{ secrets.HEALTHCHECKS_PING_URL }}" || true

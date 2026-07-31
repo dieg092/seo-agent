@@ -1,27 +1,28 @@
 // scripts/check-external-workflow-heartbeat.ts
 //
-// Vigila desde fuera si un workflow de OTRO repo (wedding-invite-2) ha
-// corrido con éxito recientemente. Existe porque si GitHub bloquea el
-// runner de wedding-invite-2 antes de arrancar (p. ej. el problema de
-// facturación de la cuenta), ningún paso de ESE workflow llega a
-// ejecutarse — ni el que manda el aviso de fallo a Telegram. seo-agent es
-// público (gratis, no le afecta ese bloqueo) y ya tiene un PAT de lectura
-// sobre wedding-invite-2 (WEDDING_INVITE_2_PAT), así que puede detectar
-// ese silencio desde fuera.
+// Vigila si un workflow (de este repo o de otro) ha corrido con éxito
+// recientemente. El token a usar se lee de la variable de entorno cuyo
+// NOMBRE se pasa como 4º argumento (por defecto GITHUB_TOKEN, el que
+// GitHub Actions inyecta automáticamente y basta para leer las Actions
+// de un repo público como este mismo) — así el mismo script sirve tanto
+// para vigilarse a sí mismo (self-repo) como a otro repo con un PAT
+// específico, sin duplicar código.
 import { getEnv } from "../src/env";
 import { isStaleOrFailed, type ExternalWorkflowRun } from "../src/alerts/checkExternalWorkflowHeartbeat";
 import { sendTelegramMessage } from "../src/alerts/sendTelegramMessage";
 
 async function main() {
-  const [owner, repo, workflowFile] = process.argv.slice(2);
+  const [owner, repo, workflowFile, tokenEnvVar = "GITHUB_TOKEN"] = process.argv.slice(2);
   if (!owner || !repo || !workflowFile) {
-    console.error("Uso: check-external-workflow-heartbeat.ts <owner> <repo> <workflow-file>");
+    console.error(
+      "Uso: check-external-workflow-heartbeat.ts <owner> <repo> <workflow-file> [token-env-var=GITHUB_TOKEN]",
+    );
     process.exit(1);
   }
 
-  const pat = getEnv("WEDDING_INVITE_2_PAT");
+  const token = getEnv(tokenEnvVar);
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?per_page=1`, {
-    headers: { Authorization: `Bearer ${pat}`, Accept: "application/vnd.github+json" },
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
   });
 
   if (!res.ok) {
