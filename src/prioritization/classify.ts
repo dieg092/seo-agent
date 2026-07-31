@@ -285,27 +285,44 @@ export function extractDecliningFindings(
   return findings;
 }
 
-export function extractCannibalizationFindings(
-  rows: { page: string; query: string; date: Date }[]
-): Finding[] {
-  const pagesByQuery = new Map<string, Set<string>>();
+// Umbral por defecto de impresiones significativas por página antes de
+// considerar un solapamiento como canibalización real, no ruido
+// estadístico. Sin esto, dos páginas con 1 impresión cada una para la
+// misma consulta (coincidencia normal en cualquier sitio con cientos de
+// consultas long-tail) dispararían un hallazgo — hallazgo T06 de la
+// auditoría SEO/growth de wedding-invite-2, 2026-07-31.
+const DEFAULT_MIN_IMPRESSIONS_PER_PAGE = 5;
 
+export function extractCannibalizationFindings(
+  rows: { page: string; query: string; date: Date; impressions: number }[],
+  opts: { minImpressionsPerPage?: number } = {},
+): Finding[] {
+  const minImpressionsPerPage = opts.minImpressionsPerPage ?? DEFAULT_MIN_IMPRESSIONS_PER_PAGE;
+
+  const impressionsByQueryAndPage = new Map<string, Map<string, number>>();
   for (const row of rows) {
-    if (!pagesByQuery.has(row.query)) pagesByQuery.set(row.query, new Set());
-    pagesByQuery.get(row.query)!.add(row.page);
+    if (!impressionsByQueryAndPage.has(row.query)) {
+      impressionsByQueryAndPage.set(row.query, new Map());
+    }
+    const byPage = impressionsByQueryAndPage.get(row.query)!;
+    byPage.set(row.page, (byPage.get(row.page) ?? 0) + row.impressions);
   }
 
   const findings: Finding[] = [];
 
-  for (const [query, pages] of pagesByQuery) {
-    if (pages.size >= 2) {
-      const pageList = Array.from(pages).sort();
+  for (const [query, byPage] of impressionsByQueryAndPage) {
+    const significantPages = Array.from(byPage.entries())
+      .filter(([, impressions]) => impressions >= minImpressionsPerPage)
+      .map(([page]) => page)
+      .sort();
+
+    if (significantPages.length >= 2) {
       findings.push({
         source: "content",
         findingType: "content-cannibalization",
         stableKeyInput: `content-cannibalization:${query}`,
-        title: `"${query}" recibe impresiones desde ${pages.size} páginas distintas: ${pageList.join(", ")}`,
-        detail: { query, pages: pageList },
+        title: `"${query}" recibe impresiones significativas desde ${significantPages.length} páginas distintas: ${significantPages.join(", ")}`,
+        detail: { query, pages: significantPages },
         sourceRefId: query,
       });
     }

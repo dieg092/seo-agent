@@ -128,10 +128,10 @@ test("extractInternalLinkFindings creates one finding per open link suggestion",
   assert.ok(findings[0].stableKeyInput.includes("presupuesto/cuanto-cuesta"));
 });
 
-test("extractCannibalizationFindings flags a query with 2+ pages and no clear winner", () => {
+test("extractCannibalizationFindings flags a query with 2+ pages, each with impresiones significativas", () => {
   const findings = extractCannibalizationFindings([
-    { page: "/blog/a", query: "invitaciones de boda baratas", date: new Date("2026-07-01") },
-    { page: "/blog/b", query: "invitaciones de boda baratas", date: new Date("2026-07-01") },
+    { page: "/blog/a", query: "invitaciones de boda baratas", date: new Date("2026-07-01"), impressions: 10 },
+    { page: "/blog/b", query: "invitaciones de boda baratas", date: new Date("2026-07-01"), impressions: 8 },
   ]);
 
   assert.equal(findings.length, 1);
@@ -141,8 +141,56 @@ test("extractCannibalizationFindings flags a query with 2+ pages and no clear wi
 
 test("extractCannibalizationFindings does not flag a query with only 1 page", () => {
   const findings = extractCannibalizationFindings([
-    { page: "/blog/a", query: "unica pagina", date: new Date("2026-07-01") },
+    { page: "/blog/a", query: "unica pagina", date: new Date("2026-07-01"), impressions: 50 },
   ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractCannibalizationFindings ignora un solapamiento por debajo del umbral de impresiones (ruido)", () => {
+  // Dos páginas con 1 impresión cada una para la misma consulta es
+  // coincidencia estadística normal, no canibalización real — sin umbral,
+  // esto generaría falsos positivos constantes (hallazgo T06 de la
+  // auditoría SEO/growth de wedding-invite-2, 2026-07-31).
+  const findings = extractCannibalizationFindings([
+    { page: "/blog/a", query: "consulta rara", date: new Date("2026-07-01"), impressions: 1 },
+    { page: "/blog/b", query: "consulta rara", date: new Date("2026-07-01"), impressions: 1 },
+  ]);
+
+  assert.equal(findings.length, 0);
+});
+
+test("extractCannibalizationFindings suma impresiones de varios días antes de comparar con el umbral", () => {
+  const findings = extractCannibalizationFindings([
+    { page: "/blog/a", query: "consulta acumulada", date: new Date("2026-07-01"), impressions: 3 },
+    { page: "/blog/a", query: "consulta acumulada", date: new Date("2026-07-02"), impressions: 3 },
+    { page: "/blog/b", query: "consulta acumulada", date: new Date("2026-07-01"), impressions: 5 },
+  ]);
+
+  // /blog/a acumula 6 impresiones (3+3), por encima del umbral por defecto (5)
+  assert.equal(findings.length, 1);
+});
+
+test("extractCannibalizationFindings solo cuenta las páginas que superan el umbral, no todas las implicadas en la consulta", () => {
+  const findings = extractCannibalizationFindings([
+    { page: "/blog/a", query: "consulta mixta", date: new Date("2026-07-01"), impressions: 20 },
+    { page: "/blog/b", query: "consulta mixta", date: new Date("2026-07-01"), impressions: 15 },
+    { page: "/blog/c", query: "consulta mixta", date: new Date("2026-07-01"), impressions: 1 },
+  ]);
+
+  assert.equal(findings.length, 1);
+  const detail = findings[0].detail as { pages: string[] };
+  assert.deepEqual(detail.pages, ["/blog/a", "/blog/b"]);
+});
+
+test("extractCannibalizationFindings admite un umbral personalizado", () => {
+  const findings = extractCannibalizationFindings(
+    [
+      { page: "/blog/a", query: "consulta con umbral alto", date: new Date("2026-07-01"), impressions: 8 },
+      { page: "/blog/b", query: "consulta con umbral alto", date: new Date("2026-07-01"), impressions: 8 },
+    ],
+    { minImpressionsPerPage: 10 },
+  );
 
   assert.equal(findings.length, 0);
 });

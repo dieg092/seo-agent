@@ -95,7 +95,9 @@ export async function computeCurrentFindings(): Promise<Finding[]> {
     where: { date: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) } },
   });
   findings.push(
-    ...extractCannibalizationFindings(recentSnapshots.map((r) => ({ page: r.page, query: r.query, date: r.date })))
+    ...extractCannibalizationFindings(
+      recentSnapshots.map((r) => ({ page: r.page, query: r.query, date: r.date, impressions: r.impressions })),
+    )
   );
 
   const priorSnapshots = await prisma.searchConsoleSnapshot.findMany({
