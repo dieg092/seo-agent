@@ -74,13 +74,17 @@ test("collectSearchConsole upserts on (date, page, query) instead of duplicating
 
 test("collectSearchConsole pide un rango más amplio cuando detecta huecos en la BD (backfill)", async () => {
   await withEmptySearchConsoleSnapshots(async () => {
+    // today fijo: evita que el test sea inestable si la ejecución cruza
+    // la medianoche UTC entre construir la fixture y hacer la aserción.
+    const today = new Date("2026-07-31T12:00:00.000Z");
+
     // Rellena todos los días de la ventana de 30 días excepto uno solo,
     // "hace 10 días" — simula que el cron falló ese día concreto (p. ej.
     // por el watchdog en fallo, T05) y el resto de días sí tiene datos.
     const rowsToInsert = [];
     for (let i = 3; i <= 30; i++) {
       if (i === 10) continue; // el hueco a detectar
-      const d = new Date();
+      const d = new Date(today);
       d.setUTCDate(d.getUTCDate() - i);
       rowsToInsert.push({
         date: d,
@@ -96,13 +100,14 @@ test("collectSearchConsole pide un rango más amplio cuando detecta huecos en la
 
     let requestedStartDate = "";
     await collectSearchConsole({
+      today,
       fetchRows: async (params) => {
         requestedStartDate = params.startDate;
         return [];
       },
     });
 
-    const tenDaysAgo = new Date();
+    const tenDaysAgo = new Date(today);
     tenDaysAgo.setUTCDate(tenDaysAgo.getUTCDate() - 10);
     assert.equal(requestedStartDate, tenDaysAgo.toISOString().slice(0, 10));
   });
@@ -110,9 +115,11 @@ test("collectSearchConsole pide un rango más amplio cuando detecta huecos en la
 
 test("collectSearchConsole usa la ventana normal de 3 días cuando no hay huecos", async () => {
   await withEmptySearchConsoleSnapshots(async () => {
+    const today = new Date("2026-07-31T12:00:00.000Z");
+
     const rowsToInsert = [];
     for (let i = 3; i <= 30; i++) {
-      const d = new Date();
+      const d = new Date(today);
       d.setUTCDate(d.getUTCDate() - i);
       rowsToInsert.push({
         date: d,
@@ -128,13 +135,14 @@ test("collectSearchConsole usa la ventana normal de 3 días cuando no hay huecos
 
     let requestedStartDate = "";
     await collectSearchConsole({
+      today,
       fetchRows: async (params) => {
         requestedStartDate = params.startDate;
         return [];
       },
     });
 
-    const threeDaysAgo = new Date();
+    const threeDaysAgo = new Date(today);
     threeDaysAgo.setUTCDate(threeDaysAgo.getUTCDate() - 3);
     assert.equal(requestedStartDate, threeDaysAgo.toISOString().slice(0, 10));
   });

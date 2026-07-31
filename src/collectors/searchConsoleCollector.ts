@@ -12,11 +12,15 @@ function isoDateDaysAgo(daysAgo: number, from: Date = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function getExistingSnapshotDates(lookbackWindowDays: number): Promise<Set<string>> {
-  const rows = await prisma.searchConsoleSnapshot.findMany({
-    where: { date: { gte: new Date(isoDateDaysAgo(lookbackWindowDays)) } },
-    select: { date: true },
-    distinct: ["date"],
+// groupBy en vez de findMany+distinct: distinct no está entre las
+// previewFeatures habilitadas de Prisma (solo postgresqlExtensions), así
+// que se deduplicaría en memoria trayendo cada fila (page × query × día,
+// miles) solo para sacar ≤30 fechas. groupBy sí se traduce a GROUP BY en
+// Postgres, servido por el índice @@index([date]).
+async function getExistingSnapshotDates(lookbackWindowDays: number, today: Date): Promise<Set<string>> {
+  const rows = await prisma.searchConsoleSnapshot.groupBy({
+    by: ["date"],
+    where: { date: { gte: new Date(isoDateDaysAgo(lookbackWindowDays, today)) } },
   });
   return new Set(rows.map((r) => r.date.toISOString().slice(0, 10)));
 }
@@ -29,15 +33,16 @@ export async function collectSearchConsole(deps: {
   }) => Promise<SearchConsoleRow[]>;
   daysBack?: number;
   lookbackWindowDays?: number;
-  getExistingDates?: (lookbackWindowDays: number) => Promise<Set<string>>;
+  getExistingDates?: (lookbackWindowDays: number, today: Date) => Promise<Set<string>>;
+  today?: Date;
 } = {}): Promise<{ inserted: number }> {
   const fetchRows = deps.fetchRows ?? fetchSearchConsoleRows;
   const daysBack = deps.daysBack ?? 3; // GSC data has ~2-3 days of lag
   const lookbackWindowDays = deps.lookbackWindowDays ?? 30;
   const getExistingDates = deps.getExistingDates ?? getExistingSnapshotDates;
-  const today = new Date();
+  const today = deps.today ?? new Date();
 
-  const existingDates = await getExistingDates(lookbackWindowDays);
+  const existingDates = await getExistingDates(lookbackWindowDays, today);
   const startDate = computeFetchStartDate({
     existingDates,
     today,

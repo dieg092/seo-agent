@@ -12,8 +12,15 @@ name: self-health watchdog
 
 on:
   schedule:
-    # 07:30 UTC — 1h30 después de daily-collection.yml (06:00 UTC).
-    - cron: "30 7 * * *"
+    # 09:00 UTC — con el umbral de 26h de isStaleOrFailed, un fallo
+    # silencioso (el job de las 06:00 simplemente no se dispara ese día)
+    # solo se detecta si, en el momento de esta comprobación, la última
+    # ejecución con éxito ya supera las 26h. Comprobar a las 07:30
+    # (1h30 tras el job) dejaba la última ejecución en 25h30 — por debajo
+    # del umbral, así que un fallo silencioso no se detectaba hasta el día
+    # siguiente. A las 09:00, esa misma ejecución ya tiene 27h — por
+    # encima del umbral, se detecta el mismo día.
+    - cron: "0 9 * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -22,6 +29,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       actions: read
+      contents: read
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -38,7 +46,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Check daily-collection.yml heartbeat (este mismo repo)
-        run: pnpm exec tsx scripts/check-external-workflow-heartbeat.ts ${{ github.repository_owner }} seo-agent daily-collection.yml
+        run: pnpm exec tsx scripts/check-external-workflow-heartbeat.ts ${{ github.repository_owner }} ${{ github.event.repository.name }} daily-collection.yml
 
       # Ping a healthchecks.io: si ESTE workflow deja de correr,
       # healthchecks.io lo detecta por ausencia de ping y avisa por su
