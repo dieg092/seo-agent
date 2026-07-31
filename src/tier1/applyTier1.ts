@@ -3,10 +3,18 @@ import { prisma } from "../db";
 import { getTier } from "./tierAssignment";
 import { getRobotsFixerContent } from "./fixers/robotsFixer";
 import { openPullRequestWithFileChange, mergePullRequest } from "./github";
+import { isWithinMergeCooldown } from "./mergeCooldown";
 import type { FindingType } from "../prioritization/types";
 
 const MAX_PRS_PER_RUN = 3;
 const ROBOTS_FILE_PATH = "src/app/robots.ts";
+// Antes de la primera graduación real (GraduationRecord vacío en el
+// momento de la auditoría, 2026-07-31), no había ningún límite de
+// frecuencia entre auto-merges consecutivos al mismo archivo. 24h es
+// deliberadamente conservador: como máximo un auto-merge al día por
+// archivo, dejando margen de sobra para que alguien lo revise si algo va
+// mal antes del siguiente ciclo.
+const AUTO_MERGE_COOLDOWN_HOURS = 24;
 
 // Finding types whose fixer targets the same file path, keyed by that file path.
 // Both robots finding types resolve to the same canonical robots.ts content, so
@@ -140,11 +148,22 @@ export async function applyTier1(deps: {
     });
 
     if (graduationRecord?.autoMergeEligible) {
-      await mergePr({ prNumber: pr.prNumber });
-      await prisma.appliedChange.update({
-        where: { id: createdChange.id },
-        data: { status: "merged" },
+      const lastMergedChangeForFile = await prisma.appliedChange.findFirst({
+        where: { filePath: targetFilePath, status: "merged" },
+        orderBy: { createdAt: "desc" },
       });
+
+      if (isWithinMergeCooldown(lastMergedChangeForFile?.createdAt ?? null, new Date(), AUTO_MERGE_COOLDOWN_HOURS)) {
+        console.log(
+          `[tier1] Auto-merge omitido para ${opportunity.findingType}: cooldown activo en ${targetFilePath} (último merge ${lastMergedChangeForFile?.createdAt.toISOString()}). El PR queda abierto para revisión manual o para el siguiente ciclo tras el cooldown.`,
+        );
+      } else {
+        await mergePr({ prNumber: pr.prNumber });
+        await prisma.appliedChange.update({
+          where: { id: createdChange.id },
+          data: { status: "merged" },
+        });
+      }
     }
 
     findingTypesHandledThisRunByFile.add(`${targetFilePath}::${opportunity.findingType}`);

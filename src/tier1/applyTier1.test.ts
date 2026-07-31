@@ -250,3 +250,81 @@ test("applyTier1 still creates the AppliedChange (with null previousContent) whe
     assert.equal(change?.previousContent, null);
   });
 });
+
+test("applyTier1 leaves the PR open (no merge call) when a graduated finding type would auto-merge but the file is within its merge cooldown", async () => {
+  await withEmptyTables(async () => {
+    await prisma.graduationRecord.deleteMany({});
+    await prisma.graduationRecord.create({
+      data: { findingType: "robots-blocks-all", consecutiveGood: 10, autoMergeEligible: true },
+    });
+    // Un AppliedChange ya "merged" para el mismo archivo, hace 1 hora — muy
+    // dentro del cooldown por defecto de 24h.
+    await prisma.appliedChange.create({
+      data: {
+        opportunityStableKey: "previous-merge-key",
+        findingType: "robots-blocks-all",
+        prUrl: "https://github.com/dieg092/wedding-invite-2/pull/0",
+        prNumber: 0,
+        status: "merged",
+        filePath: "src/app/robots.ts",
+        createdAt: new Date(Date.now() - 60 * 60 * 1000),
+      },
+    });
+    await makeOpenOpportunity();
+
+    let mergeCalled = false;
+    const result = await applyTier1({
+      openPr: async () => ({ prUrl: "https://github.com/dieg092/wedding-invite-2/pull/3", prNumber: 3 }),
+      getExistingFileSha: async () => "fake-sha",
+      mergePr: async () => {
+        mergeCalled = true;
+      },
+    });
+
+    assert.equal(result.prsOpened, 1);
+    assert.equal(mergeCalled, false);
+    const newChange = await prisma.appliedChange.findFirst({ where: { prNumber: 3 } });
+    assert.equal(newChange?.status, "open");
+
+    await prisma.graduationRecord.deleteMany({});
+  });
+});
+
+test("applyTier1 auto-merges again once the cooldown for that file has fully elapsed", async () => {
+  await withEmptyTables(async () => {
+    await prisma.graduationRecord.deleteMany({});
+    await prisma.graduationRecord.create({
+      data: { findingType: "robots-blocks-all", consecutiveGood: 10, autoMergeEligible: true },
+    });
+    // El último merge para este archivo fue hace 25h — ya fuera del
+    // cooldown de 24h por defecto.
+    await prisma.appliedChange.create({
+      data: {
+        opportunityStableKey: "previous-merge-key",
+        findingType: "robots-blocks-all",
+        prUrl: "https://github.com/dieg092/wedding-invite-2/pull/0",
+        prNumber: 0,
+        status: "merged",
+        filePath: "src/app/robots.ts",
+        createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      },
+    });
+    await makeOpenOpportunity();
+
+    let mergeCalled = false;
+    const result = await applyTier1({
+      openPr: async () => ({ prUrl: "https://github.com/dieg092/wedding-invite-2/pull/4", prNumber: 4 }),
+      getExistingFileSha: async () => "fake-sha",
+      mergePr: async () => {
+        mergeCalled = true;
+      },
+    });
+
+    assert.equal(result.prsOpened, 1);
+    assert.equal(mergeCalled, true);
+    const newChange = await prisma.appliedChange.findFirst({ where: { prNumber: 4 } });
+    assert.equal(newChange?.status, "merged");
+
+    await prisma.graduationRecord.deleteMany({});
+  });
+});
