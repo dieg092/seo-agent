@@ -28,7 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      actions: read
+      # write: para reactivar los cron (paso siguiente).
+      actions: write
       contents: read
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -44,6 +45,19 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+
+      # En repos públicos GitHub desactiva los cron tras 60 días sin commits
+      # (estado disabled_inactivity): daily-collection.yml se quedó apagado
+      # así desde el 2026-09-29 sin que nada lo volviera a encender. Llamar
+      # a "enable" sobre un workflow ya activo reinicia ese contador, así que
+      # hacerlo aquí cada día mantiene vivos todos los cron, este incluido.
+      - name: Mantener activos los cron del repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for id in $(gh api repos/${{ github.repository }}/actions/workflows --jq '.workflows[].id'); do
+            gh api -X PUT repos/${{ github.repository }}/actions/workflows/$id/enable
+          done
 
       - name: Check daily-collection.yml heartbeat (este mismo repo)
         run: pnpm exec tsx scripts/check-external-workflow-heartbeat.ts ${{ github.repository_owner }} ${{ github.event.repository.name }} daily-collection.yml
