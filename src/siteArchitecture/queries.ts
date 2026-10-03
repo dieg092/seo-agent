@@ -71,7 +71,10 @@ export async function getMissingProvincialTemplateCandidates(
     if (total > 0) impressionsByProvince.set(province, total);
   }
 
-  const publishedUrls = await getPublishedArticleUrls({ fetchXml: deps.fetchXml, baseUrl });
+  const publishedUrls = await getPublishedArticleUrls({ fetchXml: deps.fetchXml, baseUrl, includeProvincePages: true });
+  // Artículos del blog y también las fichas /profesionales/fotografos/provincia/<p>:
+  // antes solo se miraba el blog y se marcaba "sin página provincial" a
+  // provincias que ya la tenían (barcelona y girona, 2026-10-01).
   const existingProvinceSlugs = new Set(
     publishedUrls
       .map((u) => u.slug.toLowerCase())

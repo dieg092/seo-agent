@@ -4,6 +4,8 @@ import { getEnv } from "../env";
 export async function getPublishedArticleUrls(deps: {
   fetchXml?: (url: string) => Promise<string>;
   baseUrl?: string;
+  /** Incluye también las fichas provinciales (slug = "provincia/<p>"). */
+  includeProvincePages?: boolean;
 } = {}): Promise<{ slug: string; url: string }[]> {
   const baseUrl = deps.baseUrl ?? getEnv("SITE_BASE_URL");
   const fetchXml =
@@ -19,12 +21,15 @@ export async function getPublishedArticleUrls(deps: {
 
   const results: { slug: string; url: string }[] = [];
   const blogPrefix = `${baseUrl}/blog/`;
+  const provincePrefix = `${baseUrl}/profesionales/fotografos/provincia/`;
 
   $("url > loc").each((_, el) => {
     const url = $(el).text().trim();
     if (url.startsWith(blogPrefix)) {
       const slug = url.slice(blogPrefix.length);
       results.push({ slug, url });
+    } else if (deps.includeProvincePages && url.startsWith(provincePrefix)) {
+      results.push({ slug: `provincia/${url.slice(provincePrefix.length)}`, url });
     }
   });
 

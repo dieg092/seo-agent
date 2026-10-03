@@ -98,7 +98,9 @@ test("getMissingProvincialTemplateCandidates flags a province with real impressi
 
   const malagaCandidate = result.find((c) => c.province === "malaga");
   assert.ok(malagaCandidate);
-  assert.equal(malagaCandidate?.impressions, 600);
+  // >= y no ===: la tabla es la de producción y puede tener búsquedas
+  // reales con "malaga" en la ventana de 90 días.
+  assert.ok((malagaCandidate?.impressions ?? 0) >= 600);
 
   await resetTables();
 });
@@ -119,6 +121,25 @@ test("getMissingProvincialTemplateCandidates does not flag a province that alrea
 
   const sevillaCandidate = result.find((c) => c.province === "sevilla");
   assert.equal(sevillaCandidate, undefined);
+
+  await resetTables();
+});
+
+test("getMissingProvincialTemplateCandidates does not flag a province that already has its photographers page", async () => {
+  await resetTables();
+
+  await prisma.searchConsoleSnapshot.create({
+    data: { date: new Date(), page: "/profesionales/fotografos/provincia/malaga", query: "__test__fotografo boda malaga", clicks: 0, impressions: 600, ctr: 0, position: 60 },
+  });
+
+  const result = await getMissingProvincialTemplateCandidates({
+    fetchXml: async () => `<?xml version="1.0"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://miwebdeboda.com/profesionales/fotografos/provincia/malaga</loc></url>
+</urlset>`,
+  });
+
+  assert.equal(result.find((c) => c.province === "malaga"), undefined);
 
   await resetTables();
 });
