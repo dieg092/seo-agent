@@ -18,3 +18,9 @@ test("computeOutcome returns inconclusive when there is no baseline to compare a
   assert.equal(computeOutcome(0, 0), "inconclusive");
   assert.equal(computeOutcome(0, 5), "inconclusive");
 });
+
+test("computeOutcome returns inconclusive when the baseline is too small to be meaningful", () => {
+  assert.equal(computeOutcome(8, 2), "inconclusive");
+  assert.equal(computeOutcome(19, 0), "inconclusive");
+  assert.equal(computeOutcome(20, 10), "negative");
+});
