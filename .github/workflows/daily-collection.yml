@@ -8,7 +8,8 @@ on:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 30 min: la inspección de URLs del domingo recorre todo el sitemap.
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DIRECT_URL: ${{ secrets.DIRECT_URL }}
@@ -21,6 +22,10 @@ jobs:
       GSC_SITE_URL: ${{ vars.GSC_SITE_URL }}
       GA4_PROPERTY_ID: ${{ vars.GA4_PROPERTY_ID }}
       SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
+      # Clave HMAC/AES para redactar y cifrar las URLs privadas (webs de boda).
+      SEO_PRIVATE_URL_KEY: ${{ secrets.SEO_PRIVATE_URL_KEY }}
+      # Muestras de URLs privadas que la sonda comprueba que siguen en noindex.
+      PRIVATE_PROBE_URLS: ${{ vars.PRIVATE_PROBE_URLS }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
@@ -37,11 +42,20 @@ jobs:
       - id: collect-gsc
         run: pnpm collect:search-console
         continue-on-error: true
+      - id: collect-gsc-full
+        run: pnpm collect:search-console-full
+        continue-on-error: true
       - id: collect-ga4
         run: pnpm collect:analytics
         continue-on-error: true
+      - id: collect-url-inspection
+        run: pnpm collect:url-inspection
+        continue-on-error: true
       - id: audit-sitemap
         run: pnpm audit:sitemap
+        continue-on-error: true
+      - id: audit-production
+        run: pnpm audit:production
         continue-on-error: true
       - id: audit-robots
         run: pnpm audit:robots
@@ -64,7 +78,7 @@ jobs:
         run: pnpm apply:tier1
       - name: Report workflow health
         if: always()
-        run: pnpm exec tsx scripts/report-workflow-health.ts "daily-collection" "${{ steps.collect-gsc.outcome }},${{ steps.collect-ga4.outcome }},${{ steps.audit-sitemap.outcome }},${{ steps.audit-robots.outcome }},${{ steps.audit-structured-data.outcome }},${{ steps.audit-performance.outcome }},${{ steps.prioritize.outcome }},${{ steps.apply-tier1.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: pnpm exec tsx scripts/report-workflow-health.ts "daily-collection" "${{ steps.collect-gsc.outcome }},${{ steps.collect-gsc-full.outcome }},${{ steps.collect-ga4.outcome }},${{ steps.collect-url-inspection.outcome }},${{ steps.audit-sitemap.outcome }},${{ steps.audit-production.outcome }},${{ steps.audit-robots.outcome }},${{ steps.audit-structured-data.outcome }},${{ steps.audit-performance.outcome }},${{ steps.prioritize.outcome }},${{ steps.apply-tier1.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       # Uses job.status (not individual step outcomes) so a run is reported
       # even if it dies before "Report workflow health" — e.g. pnpm install

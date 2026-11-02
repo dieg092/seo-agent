@@ -10,10 +10,38 @@ concreta se haya "graduado" (ver más abajo).
 
 | Job | Frecuencia | Qué hace |
 |---|---|---|
-| `daily-collection` | Diaria | Recolecta GSC/GA4, audita sitemap/robots/structured-data, prioriza, aplica Tier 1 |
+| `daily-collection` | Diaria | Recolecta GSC (básico y completo), GA4 (totales y por landing), inspección de URLs y sitemaps de GSC; audita sitemap/robots/structured-data y producción; prioriza, aplica Tier 1 |
 | `weekly-sync` | Semanal (lunes) | Sincroniza estado de PRs abiertos, mide impacto de cambios mergeados hace 2+ semanas |
 | `weekly-embeddings-and-briefing` | Semanal (lunes) | Recalcula embeddings de artículos, sugerencias de enlazado interno, genera el briefing para tu revisión Tier 2 |
 | `monthly-site-architecture` | Mensual (día 1) | Detecta problemas a nivel de plantilla: rendimiento agregado, contenido casi duplicado, huecos de páginas provinciales |
+
+### Pasos de `daily-collection`
+
+Todos los pasos de recogida y auditoría llevan `continue-on-error`: si uno
+falla, los demás siguen, y `report-workflow-health` marca el run como
+fallido y registra una alerta. En GitHub el job puede salir en verde aunque
+un paso haya fallado; mira la alerta o el aviso de Telegram.
+
+| Paso | Script | Guarda en |
+|---|---|---|
+| `collect-gsc` | `collect:search-console` | `SearchConsoleSnapshot` (colector original, sin cambios) |
+| `collect-gsc-full` | `collect:search-console-full` | `SearchConsolePageDaily`, `SearchConsoleQueryTyped`, `SearchConsoleSegmentDaily`, `GscDataQuality` |
+| `collect-ga4` | `collect:analytics` | `AnalyticsSnapshot` y `AnalyticsLandingDaily` |
+| `collect-url-inspection` | `collect:url-inspection` | `UrlInspection` (por prioridad a diario, barrido de todo el sitemap los domingos) y `GscSitemapStatus` |
+| `audit-sitemap`, `audit-robots`, `audit-structured-data` | `audit:*` | sus tablas `*AuditResult` |
+| `audit-production` | `audit:production` | `ProductionProbeResult` y `PrivateIncident` |
+| `audit-performance` | `audit:performance` | `PerformanceAuditResult` (solo lunes o lanzado a mano) |
+
+### URLs privadas
+
+Las webs de boda son privadas. Ninguna tabla guarda su URL en claro: se
+guardan como `https://miwebdeboda.com/<privada:{hmac12}>` y, solo en
+`PrivateIncident`, cifradas. Para eso los pasos nuevos necesitan el secret
+`SEO_PRIVATE_URL_KEY`; sin él fallan sin escribir nada. La sonda de
+producción abre además las muestras de `PRIVATE_PROBE_URLS` (variable del
+repo) para comprobar que siguen con `noindex`. Si alguna aparece en el
+sitemap, en GSC o sin `noindex`, queda abierta como incidente en
+`PrivateIncident`.
 
 ## Los 3 Tiers
 
@@ -66,4 +94,18 @@ caducando en menos de 30 días.
 
 ## Variables de entorno
 
-Ver `.env.example` para la lista completa y de dónde sale cada valor.
+Ver `.env.example` para la lista completa y de dónde sale cada valor. En
+GitHub Actions, los valores secretos van como *secrets* del repo
+(`DATABASE_URL`, `DIRECT_URL`, credenciales de Google, `PAGESPEED_API_KEY`,
+`WEDDING_INVITE_2_PAT`, `SEO_PRIVATE_URL_KEY`, Telegram) y los no secretos
+como *variables* (`GSC_SITE_URL`, `GA4_PROPERTY_ID`, `SITE_BASE_URL`,
+`TARGET_REPO_OWNER`, `TARGET_REPO_NAME`, `PRIVATE_PROBE_URLS`).
+
+## Tests
+
+Se ejecutan contra un Postgres local, nunca contra Neon:
+
+```bash
+pnpm test:db:setup   # crea/actualiza la BD local seo_agent_test
+pnpm test            # SEO_ENV=test, no lee .env
+```

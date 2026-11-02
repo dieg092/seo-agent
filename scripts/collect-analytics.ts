@@ -13,12 +13,12 @@ async function main(): Promise<number> {
     exitCode = 1;
   }
 
-  // La recogida por landing necesita la tabla AnalyticsLandingDaily (migración B2) y
-  // SEO_PRIVATE_URL_KEY (B8). Hasta que el workflow pase la clave (Task 9), se omite
-  // para no cambiar el comportamiento del paso diario.
+  // La recogida por landing necesita SEO_PRIVATE_URL_KEY, que el workflow diario ya
+  // pasa. Si falta, no se guarda nada y el paso sale en rojo para que se note, pero
+  // los totales de arriba ya se han guardado.
   if (!process.env.SEO_PRIVATE_URL_KEY) {
-    console.log("Analytics por landing: omitido, falta SEO_PRIVATE_URL_KEY");
-    return exitCode;
+    console.error("Analytics por landing: falta SEO_PRIVATE_URL_KEY, no se guarda nada");
+    return 1;
   }
 
   try {
