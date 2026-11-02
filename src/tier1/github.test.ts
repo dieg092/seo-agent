@@ -41,7 +41,7 @@ test("openPullRequestWithFileChange performs the 4-call sequence: get main SHA, 
     prTitle: "[SEO Agent] Fix robots.ts",
     prBody: "Automated Tier 1 fix.",
     existingFileSha: "current-blob-sha",
-    fetchImpl,
+    fetchImpl: fetchImpl as typeof fetch,
   });
 
   assert.equal(result.prUrl, "https://github.com/dieg092/wedding-invite-2/pull/42");
@@ -72,7 +72,7 @@ test("openPullRequestWithFileChange includes the existing file's blob sha in the
     prTitle: "[SEO Agent] Fix",
     prBody: "body",
     existingFileSha: "current-blob-sha",
-    fetchImpl,
+    fetchImpl: fetchImpl as typeof fetch,
   });
 
   assert.ok(capturedPutBody);
@@ -117,7 +117,7 @@ test("openPullRequestWithFileChange throws when GitHub returns a non-ok response
         prTitle: "[SEO Agent] Fix robots.ts",
         prBody: "Automated Tier 1 fix.",
         existingFileSha: "current-blob-sha",
-        fetchImpl,
+        fetchImpl: fetchImpl as typeof fetch,
       }),
     /GitHub API request failed: 403/,
   );
@@ -166,7 +166,7 @@ test("mergePullRequest calls the GitHub merge endpoint with PUT", async () => {
     return { ok: true, json: async () => ({ merged: true }) } as Response;
   };
 
-  await mergePullRequest({ prNumber: 42, fetchImpl });
+  await mergePullRequest({ prNumber: 42, fetchImpl: fetchImpl as typeof fetch });
 
   assert.match(capturedUrl!, /\/pulls\/42\/merge$/);
   assert.equal(capturedMethod, "PUT");
@@ -189,7 +189,7 @@ test("getExistingFileSha fetches the sha field from the GitHub contents API", as
     return { ok: true, json: async () => ({ sha: "abc123", content: "" }) } as Response;
   };
 
-  const sha = await getExistingFileSha({ filePath: "src/app/robots.ts", fetchImpl });
+  const sha = await getExistingFileSha({ filePath: "src/app/robots.ts", fetchImpl: fetchImpl as typeof fetch });
 
   assert.equal(sha, "abc123");
   assert.match(capturedUrl!, /\/contents\/src%2Fapp%2Frobots\.ts$/);

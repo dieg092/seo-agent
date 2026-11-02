@@ -1,6 +1,7 @@
 // src/graduation/measureImpact.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { measureAppliedChanges } from "./measureImpact";
 
@@ -16,7 +17,7 @@ async function withEmptyOpportunities<T>(fn: () => Promise<T>): Promise<T> {
   } finally {
     await prisma.opportunity.deleteMany({});
     if (backup.length > 0) {
-      await prisma.opportunity.createMany({ data: backup });
+      await prisma.opportunity.createMany({ data: backup as Prisma.OpportunityCreateManyInput[] });
     }
   }
 }
@@ -72,10 +73,10 @@ test("measureAppliedChanges measures a robots-type change site-wide and incremen
     );
 
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/a", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/a", query: "q", clicks: 30, impressions: 300, ctr: 0.1, position: 5 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/a", query: "q", clicks: 12, impressions: 100, ctr: 0.12, position: 5 },
+      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/a", query: "q", clicks: 36, impressions: 300, ctr: 0.12, position: 5 },
     });
 
     const result = await measureAppliedChanges({ alert: async () => {} });

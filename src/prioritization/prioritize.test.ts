@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { computeCurrentFindings, syncOpportunities } from "./prioritize";
 
@@ -19,7 +20,7 @@ before(async () => {
 after(async () => {
   await prisma.opportunity.deleteMany({});
   if (opportunityBackup.length > 0) {
-    await prisma.opportunity.createMany({ data: opportunityBackup });
+    await prisma.opportunity.createMany({ data: opportunityBackup as Prisma.OpportunityCreateManyInput[] });
   }
 });
 

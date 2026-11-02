@@ -1,6 +1,46 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { prisma } from "./db";
+import { prisma, assertSafeDatabase } from "./db";
+
+const NEON_URL = "postgresql://user:pass@ep-falso-123.eu-central-1.aws.neon.tech/neondb?sslmode=require";
+
+function withSeoEnv(value: string | undefined, fn: () => void): void {
+  const previous = process.env.SEO_ENV;
+  if (value === undefined) delete process.env.SEO_ENV;
+  else process.env.SEO_ENV = value;
+  try {
+    fn();
+  } finally {
+    if (previous === undefined) delete process.env.SEO_ENV;
+    else process.env.SEO_ENV = previous;
+  }
+}
+
+test("assertSafeDatabase lanza con SEO_ENV=test y una URL de neon.tech", () => {
+  withSeoEnv("test", () => {
+    assert.throws(() => assertSafeDatabase(NEON_URL), /neon\.tech/);
+    assert.throws(() => assertSafeDatabase(NEON_URL.toUpperCase()), /neon\.tech/);
+  });
+});
+
+test("assertSafeDatabase acepta la BD local con SEO_ENV=test", () => {
+  withSeoEnv("test", () => {
+    assert.doesNotThrow(() => assertSafeDatabase("postgresql://localhost/seo_agent_test?host=/tmp"));
+    assert.doesNotThrow(() => assertSafeDatabase(undefined));
+  });
+});
+
+test("assertSafeDatabase no bloquea Neon fuera del modo test", () => {
+  withSeoEnv(undefined, () => {
+    assert.doesNotThrow(() => assertSafeDatabase(NEON_URL));
+  });
+});
+
+test("la suite de tests no está conectada a producción", () => {
+  assert.equal(process.env.SEO_ENV, "test");
+  assert.ok(!process.env.DATABASE_URL?.includes("neon.tech"));
+  assert.ok(!process.env.DIRECT_URL?.includes("neon.tech"));
+});
 
 test("prisma client can read from the seo_agent schema", async () => {
   const count = await prisma.searchConsoleSnapshot.count();

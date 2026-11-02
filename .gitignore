@@ -1,6 +1,7 @@
 node_modules
 dist
 .env
+.env.test
 *.log
 .superpowers
 tier2-briefing.md

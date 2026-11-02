@@ -15,7 +15,7 @@ async function withEmptyOpportunities<T>(fn: () => Promise<T>): Promise<T> {
   } finally {
     await prisma.opportunity.deleteMany({});
     if (backup.length > 0) {
-      await prisma.opportunity.createMany({ data: backup });
+      await prisma.opportunity.createMany({ data: backup as Prisma.OpportunityCreateManyInput[] });
     }
   }
 }

@@ -1,6 +1,7 @@
 // src/tier1/applyTier1.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { applyTier1 } from "./applyTier1";
 
@@ -16,7 +17,7 @@ async function withEmptyOpportunities<T>(fn: () => Promise<T>): Promise<T> {
   } finally {
     await prisma.opportunity.deleteMany({});
     if (backup.length > 0) {
-      await prisma.opportunity.createMany({ data: backup });
+      await prisma.opportunity.createMany({ data: backup as Prisma.OpportunityCreateManyInput[] });
     }
   }
 }
