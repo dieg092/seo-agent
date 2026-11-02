@@ -42,7 +42,10 @@ export const PUBLIC_FIRST_SEGMENTS: readonly string[] = [
   "terminos",
 ];
 
-/** Primeros segmentos que requieren sesión o son herramientas internas. */
+/**
+ * Primeros segmentos que requieren sesión o son herramientas internas.
+ * Excepción: `/tool` a secas es pública (ver classifyPath); solo sus subrutas son privadas.
+ */
 export const PRIVATE_SESSION_FIRST_SEGMENTS: readonly string[] = [
   "admin",
   "api",
@@ -74,6 +77,8 @@ export function classifyPath(pathname: string): PrivacyClass {
   if (segments.length === 0) return "public";
 
   const [first, second, third] = segments;
+  // /tool es una página pública (sitemap, 200, index); sus subrutas (/tool/experiment…) no.
+  if (first === "tool" && segments.length === 1) return "public";
   if (SESSION_SET.has(first)) return "private-session";
   if (first === "colaboraciones" && third === "participar") return "private-session";
   if (first === "dominio-propio") return "private-unlisted";
@@ -96,17 +101,45 @@ function parseUrl(url: string): URL {
   return trimmed.startsWith("/") ? new URL(trimmed, SITE_ORIGIN) : new URL(trimmed);
 }
 
+/** Parámetros de seguimiento que no cambian la página: se quitan al normalizar. */
+export const TRACKING_PARAMS: readonly string[] = ["fbclid", "gclid", "msclkid", "mc_eid", "_ga", "igshid"];
+const TRACKING_SET = new Set(TRACKING_PARAMS);
+
+function isTrackingParam(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.startsWith("utm_") || TRACKING_SET.has(lower);
+}
+
+function decodeParamName(raw: string): string {
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, " "));
+  } catch {
+    return raw;
+  }
+}
+
+/** Quita los parámetros de seguimiento y deja el resto tal cual. Sin nada, cadena vacía. */
+function stripTrackingParams(search: string): string {
+  if (search.length <= 1) return "";
+  const kept = search
+    .slice(1)
+    .split("&")
+    .filter((part) => part.length > 0 && !isTrackingParam(decodeParamName(part.split("=")[0])));
+  return kept.length > 0 ? `?${kept.join("&")}` : "";
+}
+
 /**
  * Normaliza una URL para compararla y para calcular su HMAC:
  * https, host en minúsculas y sin `www.`, sin fragmento ni barra final
- * (la raíz conserva la `/`). La ruta y la query se mantienen tal cual.
+ * (la raíz conserva la `/`) y sin parámetros de seguimiento (utm_*, fbclid…).
+ * La ruta y el resto de la query se mantienen tal cual.
  */
 export function normalizeUrl(url: string): string {
   const parsed = parseUrl(url);
   const host = canonicalHost(parsed.host);
   let path = parsed.pathname.replace(/\/+$/, "");
   if (path === "") path = "/";
-  return `https://${host}${path}${parsed.search}`;
+  return `https://${host}${path}${stripTrackingParams(parsed.search)}`;
 }
 
 /** Clasifica una URL completa: cualquier host distinto de miwebdeboda.com es un dominio propio. */

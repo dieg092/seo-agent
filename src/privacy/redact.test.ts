@@ -20,6 +20,14 @@ test("redactUrl es estable entre http y https y con o sin barra final", () => {
   assert.equal(hmac12("http://miwebdeboda.com/ana-y-luis/", KEY), hmac12("https://miwebdeboda.com/ana-y-luis", KEY));
 });
 
+test("hmac12 ignora los parametros de seguimiento", () => {
+  const clean = "https://miwebdeboda.com/ana-y-luis";
+  const tracked = `${clean}?utm_source=ig&utm_medium=social&fbclid=abc`;
+  assert.equal(hmac12(tracked, KEY), hmac12(clean, KEY));
+  assert.equal(redactUrl(tracked, KEY), redactUrl(clean, KEY));
+  assert.equal(redactUrl("https://miwebdeboda.com/?utm_source=ig&fbclid=abc", KEY), "https://miwebdeboda.com/");
+});
+
 test("redactUrl cambia con otra clave", () => {
   assert.notEqual(
     redactUrl("https://miwebdeboda.com/ana-y-luis", KEY),

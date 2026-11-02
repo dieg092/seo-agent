@@ -38,6 +38,35 @@ test("normalizeUrl: https, host en minusculas y sin barra final", () => {
   assert.equal(normalizeUrl("/blog/x"), "https://miwebdeboda.com/blog/x");
 });
 
+test("classifyPath: /tool es publica y sus subrutas no", () => {
+  assert.equal(classifyPath("/tool"), "public");
+  assert.equal(classifyPath("/tool/"), "public");
+  assert.equal(classifyPath("/tool?utm_source=ig"), "public");
+  assert.equal(classifyPath("/tool/experiment"), "private-session");
+  assert.equal(classifyPath("/tool/experiment/"), "private-session");
+  assert.equal(isPrivateUrl("https://miwebdeboda.com/tool"), false);
+  assert.equal(isPrivateUrl("https://miwebdeboda.com/tool/experiment"), true);
+});
+
+test("normalizeUrl: quita los parametros de seguimiento", () => {
+  assert.equal(
+    normalizeUrl("https://miwebdeboda.com/?utm_source=ig&utm_medium=social&utm_content=link_in_bio&fbclid=PAZXh0bgNhZW0"),
+    "https://miwebdeboda.com/"
+  );
+  assert.equal(
+    normalizeUrl("https://miwebdeboda.com/blog/x?gclid=a&msclkid=b&mc_eid=c&_ga=d&igshid=e&UTM_Campaign=f"),
+    "https://miwebdeboda.com/blog/x"
+  );
+});
+
+test("normalizeUrl: conserva los parametros que no son de seguimiento", () => {
+  assert.equal(normalizeUrl("https://miwebdeboda.com/plantillas?page=2"), "https://miwebdeboda.com/plantillas?page=2");
+  assert.equal(
+    normalizeUrl("https://miwebdeboda.com/plantillas?utm_source=ig&page=2&fbclid=x&estilo=boho"),
+    "https://miwebdeboda.com/plantillas?page=2&estilo=boho"
+  );
+});
+
 test("normalizeUrl: la raiz conserva la barra", () => {
   assert.equal(normalizeUrl("https://miwebdeboda.com"), "https://miwebdeboda.com/");
   assert.equal(normalizeUrl("http://MIWEBDEBODA.com/"), "https://miwebdeboda.com/");
