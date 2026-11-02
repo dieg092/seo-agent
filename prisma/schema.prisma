@@ -28,6 +28,184 @@ model SearchConsoleSnapshot {
   @@schema("seo_agent")
 }
 
+// Totales por página y tipo de búsqueda (web, image, video, news, discover, googleNews).
+// Los totales nunca se calculan sumando consultas: salen siempre de aquí.
+model SearchConsolePageDaily {
+  id          String   @id @default(uuid())
+  date        DateTime @db.Date
+  page        String
+  type        String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float?
+  isFinal     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, page, type])
+  @@index([date])
+  @@index([page])
+  @@schema("seo_agent")
+}
+
+// Detalle por consulta de image y video. El de web sigue en SearchConsoleSnapshot.
+model SearchConsoleQueryTyped {
+  id          String   @id @default(uuid())
+  date        DateTime @db.Date
+  page        String
+  query       String
+  type        String
+  isBrand     Boolean  @default(false)
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float?
+  isFinal     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, page, query, type])
+  @@index([date])
+  @@index([page])
+  @@schema("seo_agent")
+}
+
+// Segmentos por dispositivo y país (solo web).
+model SearchConsoleSegmentDaily {
+  id          String   @id @default(uuid())
+  date        DateTime @db.Date
+  page        String
+  device      String
+  country     String
+  type        String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float?
+  isFinal     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, page, device, country, type])
+  @@index([date])
+  @@index([page])
+  @@schema("seo_agent")
+}
+
+// Calidad de los datos por día, tipo y dataset (p. ej. "page", "query", "segment").
+model GscDataQuality {
+  id                String   @id @default(uuid())
+  date              DateTime @db.Date
+  type              String
+  dataset           String
+  rowsReturned      Int
+  capped            Boolean  @default(false)
+  pageTotalClicks   Int?
+  queryDetailClicks Int?
+  // 1 - detalle/total; null si no hay clics totales
+  anonymizedShare   Float?
+  isFinal           Boolean  @default(false)
+  fetchedAt         DateTime @default(now())
+
+  @@unique([date, type, dataset])
+  @@index([date])
+  @@schema("seo_agent")
+}
+
+// Resultado de la URL Inspection API. Las URLs privadas no se inspeccionan nunca.
+model UrlInspection {
+  id                 String    @id @default(uuid())
+  url                String
+  inspectedAt        DateTime  @default(now())
+  inSitemap          Boolean
+  // por qué se inspecciona: tracked, recent, commercial, orphan o sweep
+  reason             String
+  verdict            String?
+  coverageState      String?
+  indexingState      String?
+  robotsTxtState     String?
+  pageFetchState     String?
+  lastCrawlTime      DateTime?
+  googleCanonical    String?
+  userCanonical      String?
+  crawledAs          String?
+  richResultsVerdict String?
+  richResultsItems   Json?
+  error              String?
+
+  @@index([url, inspectedAt])
+  @@index([inspectedAt])
+  @@schema("seo_agent")
+}
+
+// Estado de los sitemaps según GSC.
+model GscSitemapStatus {
+  id             String    @id @default(uuid())
+  path           String
+  checkedAt      DateTime  @default(now())
+  lastSubmitted  DateTime?
+  lastDownloaded DateTime?
+  isPending      Boolean
+  errors         Int
+  warnings       Int
+  contents       Json?
+  raw            Json
+
+  @@index([path, checkedAt])
+  @@schema("seo_agent")
+}
+
+// Sonda diaria contra producción. Las URLs privadas se guardan redactadas.
+model ProductionProbeResult {
+  id         String   @id @default(uuid())
+  runAt      DateTime @default(now())
+  url        String
+  // sitemap, private-sample o gsc-private
+  kind       String
+  status     Int?
+  finalUrl   String?
+  metaRobots String?
+  xRobotsTag String?
+  canonical  String?
+  ok         Boolean
+  reason     String?
+
+  @@index([runAt])
+  @@schema("seo_agent")
+}
+
+// Página privada vista fuera de su sitio. La URL real solo se guarda cifrada (AES-256-GCM).
+model PrivateIncident {
+  id           String    @id @default(uuid())
+  urlHmac      String    @unique
+  urlEncrypted String
+  firstSeenAt  DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  sources      String[]
+  resolvedAt   DateTime?
+
+  @@index([resolvedAt])
+  @@schema("seo_agent")
+}
+
+// GA4 por página de entrada y canal, con eventos clave.
+model AnalyticsLandingDaily {
+  id              String   @id @default(uuid())
+  date            DateTime @db.Date
+  landingPage     String
+  channel         String
+  sessions        Int
+  engagedSessions Int
+  keyEvents       Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([date, landingPage, channel])
+  @@index([date])
+  @@schema("seo_agent")
+}
+
 model AnalyticsSnapshot {
   id              String   @id @default(uuid())
   date            DateTime @db.Date

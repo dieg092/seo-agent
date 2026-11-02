@@ -82,6 +82,124 @@ test("prisma client can read from the ImpactMeasurement table", async () => {
   assert.equal(typeof count, "number");
 });
 
+test("nuevas tablas existen", async () => {
+  const counts = await Promise.all([
+    prisma.searchConsolePageDaily.count(),
+    prisma.searchConsoleQueryTyped.count(),
+    prisma.searchConsoleSegmentDaily.count(),
+    prisma.gscDataQuality.count(),
+    prisma.urlInspection.count(),
+    prisma.gscSitemapStatus.count(),
+    prisma.productionProbeResult.count(),
+    prisma.privateIncident.count(),
+    prisma.analyticsLandingDaily.count(),
+  ]);
+  for (const count of counts) assert.equal(typeof count, "number");
+});
+
+// Crea y borra (por id) una fila de cada tabla nueva: comprueba que la migración
+// SQL tiene todas las columnas del esquema de Prisma.
+test("nuevas tablas aceptan todos sus campos", async () => {
+  const date = new Date("2000-01-01T00:00:00Z");
+  const page = `https://miwebdeboda.com/test-schema-${Math.random()}`;
+  const metrics = { clicks: 1, impressions: 10, ctr: 0.1, position: 3.5, isFinal: true };
+
+  const pageDaily = await prisma.searchConsolePageDaily.create({ data: { date, page, type: "web", ...metrics } });
+  const queryTyped = await prisma.searchConsoleQueryTyped.create({
+    data: { date, page, query: "mi web de boda", type: "image", isBrand: true, ...metrics },
+  });
+  const segment = await prisma.searchConsoleSegmentDaily.create({
+    data: { date, page, device: "MOBILE", country: "esp", type: "web", ...metrics, position: null },
+  });
+  const quality = await prisma.gscDataQuality.create({
+    data: {
+      date,
+      type: "web",
+      dataset: `test-schema-${Math.random()}`,
+      rowsReturned: 5,
+      capped: false,
+      pageTotalClicks: 40,
+      queryDetailClicks: 30,
+      anonymizedShare: 0.25,
+      isFinal: false,
+    },
+  });
+  const inspection = await prisma.urlInspection.create({
+    data: {
+      url: page,
+      inSitemap: true,
+      reason: "recent",
+      verdict: "PASS",
+      coverageState: "Submitted and indexed",
+      indexingState: "INDEXING_ALLOWED",
+      robotsTxtState: "ALLOWED",
+      pageFetchState: "SUCCESSFUL",
+      lastCrawlTime: date,
+      googleCanonical: page,
+      userCanonical: page,
+      crawledAs: "MOBILE",
+      richResultsVerdict: "PASS",
+      richResultsItems: [{ richResultType: "FAQ" }],
+      error: null,
+    },
+  });
+  const sitemap = await prisma.gscSitemapStatus.create({
+    data: {
+      path: `${page}/sitemap.xml`,
+      lastSubmitted: date,
+      lastDownloaded: date,
+      isPending: false,
+      errors: 0,
+      warnings: 2,
+      contents: [{ type: "web", submitted: "10" }],
+      raw: { path: page },
+    },
+  });
+  const probe = await prisma.productionProbeResult.create({
+    data: {
+      url: page,
+      kind: "sitemap",
+      status: 200,
+      finalUrl: page,
+      metaRobots: "index,follow",
+      xRobotsTag: null,
+      canonical: page,
+      ok: true,
+      reason: null,
+    },
+  });
+  const incident = await prisma.privateIncident.create({
+    data: { urlHmac: `test-schema-${Math.random()}`, urlEncrypted: "iv:tag:data", sources: ["gsc:web", "probe"] },
+  });
+  const landing = await prisma.analyticsLandingDaily.create({
+    data: { date, landingPage: page, channel: "Organic Search", sessions: 3, engagedSessions: 2, keyEvents: 1.5 },
+  });
+
+  try {
+    assert.equal(pageDaily.isFinal, true);
+    assert.equal(queryTyped.isBrand, true);
+    assert.equal(segment.position, null);
+    assert.equal(quality.anonymizedShare, 0.25);
+    assert.deepEqual(inspection.richResultsItems, [{ richResultType: "FAQ" }]);
+    assert.equal(sitemap.warnings, 2);
+    assert.equal(probe.status, 200);
+    assert.deepEqual(incident.sources, ["gsc:web", "probe"]);
+    assert.equal(incident.resolvedAt, null);
+    assert.ok(incident.lastSeenAt instanceof Date);
+    assert.equal(landing.keyEvents, 1.5);
+  } finally {
+    await prisma.searchConsolePageDaily.delete({ where: { id: pageDaily.id } });
+    await prisma.searchConsoleQueryTyped.delete({ where: { id: queryTyped.id } });
+    await prisma.searchConsoleSegmentDaily.delete({ where: { id: segment.id } });
+    await prisma.gscDataQuality.delete({ where: { id: quality.id } });
+    await prisma.urlInspection.delete({ where: { id: inspection.id } });
+    await prisma.gscSitemapStatus.delete({ where: { id: sitemap.id } });
+    await prisma.productionProbeResult.delete({ where: { id: probe.id } });
+    await prisma.privateIncident.delete({ where: { id: incident.id } });
+    await prisma.analyticsLandingDaily.delete({ where: { id: landing.id } });
+  }
+});
+
 test("AppliedChange accepts filePath/previousContent/revertsAppliedChangeId as optional fields", async () => {
   const created = await prisma.appliedChange.create({
     data: {
