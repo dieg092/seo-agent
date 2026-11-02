@@ -10,7 +10,6 @@
     "collect:search-console": "tsx scripts/collect-search-console.ts",
     "collect:search-console-full": "tsx scripts/collect-search-console-full.ts",
     "collect:analytics": "tsx scripts/collect-analytics.ts",
-    "collect:gsc-sitemaps": "tsx scripts/collect-gsc-sitemaps.ts",
     "collect:url-inspection": "tsx scripts/collect-url-inspection.ts",
     "audit:sitemap": "tsx scripts/audit-sitemap.ts",
     "audit:robots": "tsx scripts/audit-robots.ts",
