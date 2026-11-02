@@ -15,7 +15,8 @@ import {
   type GscType,
 } from "../google/searchConsoleClient";
 import { isPrivateUrl } from "../privacy/sitePrivacy";
-import { encryptUrl, hmac12, redactUrl, requirePrivateUrlKey } from "../privacy/redact";
+import { redactUrl, requirePrivateUrlKey } from "../privacy/redact";
+import { upsertPrivateIncident } from "../privacy/privateIncidents";
 import { isBrandQuery } from "./brand";
 
 export const GSC_TYPES: readonly GscType[] = ["web", "image", "video", "news", "discover", "googleNews"];
@@ -179,24 +180,8 @@ async function replaceDay(spec: DatasetSpec, date: string, rows: StoredRow[], is
 function createDefaultPrivateRecorder(key: string, now: Date) {
   const fresh: { hmac: string; source: string }[] = [];
   const record = async (url: string, source: string): Promise<void> => {
-    const urlHmac = hmac12(url, key);
-    const existing = await prisma.privateIncident.findUnique({ where: { urlHmac } });
-    if (!existing) {
-      await prisma.privateIncident.create({
-        data: { urlHmac, urlEncrypted: encryptUrl(url, key), firstSeenAt: now, lastSeenAt: now, sources: [source] },
-      });
-      fresh.push({ hmac: urlHmac, source });
-      return;
-    }
-    await prisma.privateIncident.update({
-      where: { urlHmac },
-      data: {
-        lastSeenAt: now,
-        sources: existing.sources.includes(source) ? existing.sources : [...existing.sources, source],
-        resolvedAt: null,
-      },
-    });
-    if (existing.resolvedAt) fresh.push({ hmac: urlHmac, source });
+    const { isNew, urlHmac } = await upsertPrivateIncident(url, source, { key, now });
+    if (isNew) fresh.push({ hmac: urlHmac, source });
   };
   return { record, fresh };
 }
