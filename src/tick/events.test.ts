@@ -35,3 +35,13 @@ test("reconoce la nota con rango de commits de la tarea", () => {
   const ev = computeEvents({}, [snap({ status: "done", labels: ["seo-fase2", "fusion-manual"], lastNote: "rama ia/x · no fusionada (commits de esta tarea: aaaa1111..bbbb2222): la tarea lleva «fusion-manual»: …" })]);
   assert.deepEqual(ev.map((e) => e.kind), ["lista-revision"]);
 });
+
+test("CI de main: avisa de fallo, cancelación o ausencia prolongada, una vez por commit", async () => {
+  const { mainCiEvent } = await import("./events");
+  assert.equal(mainCiEvent(null, { sha: "a1", conclusion: "success", ageMinutes: 50 }), null);
+  assert.match(mainCiEvent(null, { sha: "a1", conclusion: "failure", ageMinutes: 50 })!.detail, /fallado/);
+  assert.match(mainCiEvent(null, { sha: "a1", conclusion: "cancelled", ageMinutes: 50 })!.detail, /cancel/);
+  assert.equal(mainCiEvent(null, { sha: "a1", conclusion: null, ageMinutes: 30 }), null);
+  assert.match(mainCiEvent(null, { sha: "a1", conclusion: null, ageMinutes: 130 })!.detail, /2 h/);
+  assert.equal(mainCiEvent("a1", { sha: "a1", conclusion: "failure", ageMinutes: 50 }), null);
+});

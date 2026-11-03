@@ -12,7 +12,8 @@ import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { prisma } from "../src/db";
 import { recordAlert } from "../src/alerts/recordAlert";
-import { computeEvents, nextState, type TaskSnap, type TickState } from "../src/tick/events";
+import { execFileSync } from "node:child_process";
+import { computeEvents, mainCiEvent, nextState, type MainCiSnap, type TaskSnap, type TickState } from "../src/tick/events";
 
 const HOME = homedir();
 const STATE_DIR = join(HOME, ".seo-tick");
@@ -22,6 +23,21 @@ const ORBITA_ENV = join(HOME, "Projects/personal/orbita/.env.worker");
 const DOCS = join(__dirname, "..", "docs", "superpowers");
 const DATA_COPY = join(HOME, "orbita/datos/miwebdeboda/seo-fase1");
 const SEO_LABELS = ["seo-fase1", "seo-fase2", "seo-prueba"];
+const WEB_REPO = "dieg092/wedding-invite-2";
+const MAIN_CHECK = "Typecheck · Test · Build";
+const MAIN_STATE = join(STATE_DIR, "main-ci.json");
+
+/** Último commit de main de la web y la conclusión de su CI (con el gh del Mac). */
+function mainCi(): MainCiSnap | null {
+  try {
+    const gh = (p: string, jq: string) => execFileSync("gh", ["api", p, "--jq", jq], { encoding: "utf8", timeout: 60_000 }).trim();
+    const [sha, date] = gh(`repos/${WEB_REPO}/commits/main`, '[.sha, .commit.committer.date] | @tsv').split("\t");
+    const conclusion = gh(`repos/${WEB_REPO}/commits/${sha}/check-runs?check_name=${encodeURIComponent(MAIN_CHECK)}`, "[.check_runs[0].conclusion // \"\"] | .[0]");
+    return { sha, conclusion: conclusion || null, ageMinutes: (Date.now() - Date.parse(date)) / 60_000 };
+  } catch {
+    return null;
+  }
+}
 
 function pidAlive(pid: number): boolean {
   try {
@@ -97,6 +113,17 @@ async function main() {
     for (const e of events) {
       await recordAlert({ type: `seo-tick-${e.kind}`, subject: `SEO · ${e.title}`, body: `${e.detail}\nTarea ${e.taskId}` });
       console.log(`seo-tick: aviso ${e.kind} · ${e.title}`);
+    }
+    const ci = mainCi();
+    if (ci) {
+      const prevMain = existsSync(MAIN_STATE) ? (JSON.parse(readFileSync(MAIN_STATE, "utf8")) as { sha?: string }).sha ?? null : null;
+      const ev = mainCiEvent(prevMain, ci);
+      if (ev) {
+        await recordAlert({ type: "seo-tick-main-ci", subject: `Web · ${ev.title}`, body: ev.detail });
+        console.log(`seo-tick: aviso CI de main · ${ev.detail}`);
+      }
+      // solo se marca como visto un commit con CI terminada (o ya avisado), para volver a mirarlo si sigue en curso
+      if (ev || ci.conclusion) writeFileSync(MAIN_STATE, JSON.stringify({ sha: ci.sha }));
     }
     const tmp = `${STATE}.tmp`;
     writeFileSync(tmp, JSON.stringify(nextState(curr)));

@@ -59,3 +59,28 @@ export function computeEvents(prev: TickState, curr: TaskSnap[]): TickEvent[] {
 export function nextState(curr: TaskSnap[]): TickState {
   return Object.fromEntries(curr.map((t) => [t.id, { status: t.status, note: t.lastNote, jobStatus: t.jobStatus }]));
 }
+
+export interface MainCiSnap {
+  sha: string;
+  /** Conclusión del check de la CI sobre ese commit de main (success, failure, cancelled…) o null si no ha terminado o no existe. */
+  conclusion: string | null;
+  /** Minutos desde el commit. */
+  ageMinutes: number;
+}
+
+/**
+ * Aviso si el último commit de main no ha superado la CI: falló, se canceló (p. ej. la cola de concurrencia la sustituyó
+ * y no se desplegó) o lleva más de 120 min sin check. Sin protección de rama en GitHub Free, esta es la red de seguridad.
+ */
+export function mainCiEvent(prevSha: string | null, ci: MainCiSnap): TickEvent | null {
+  if (prevSha === ci.sha) return null;
+  const subject = `main ${ci.sha.slice(0, 8)}`;
+  if (ci.conclusion === "success" || ci.conclusion === "skipped") return null;
+  if (ci.conclusion === "failure" || ci.conclusion === "timed_out")
+    return { kind: "bloqueada", taskId: ci.sha, title: subject, detail: "La CI de main ha fallado: ese commit no se ha desplegado." };
+  if (ci.conclusion === "cancelled")
+    return { kind: "bloqueada", taskId: ci.sha, title: subject, detail: "La CI de main se canceló (cola de concurrencia): ese commit no se ha desplegado." };
+  if (ci.conclusion === null && ci.ageMinutes > 120)
+    return { kind: "bloqueada", taskId: ci.sha, title: subject, detail: "El último commit de main lleva más de 2 h sin CI terminada." };
+  return null;
+}
