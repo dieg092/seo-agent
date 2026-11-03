@@ -30,3 +30,8 @@ test("bloqueada y fallo avisan una sola vez", () => {
 test("las tareas que no son SEO no generan avisos", () => {
   assert.deepEqual(computeEvents({}, [snap({ labels: ["creada por la IA"], status: "blocked" })]), []);
 });
+
+test("reconoce la nota con rango de commits de la tarea", () => {
+  const ev = computeEvents({}, [snap({ status: "done", labels: ["seo-fase2", "fusion-manual"], lastNote: "rama ia/x · no fusionada (commits de esta tarea: aaaa1111..bbbb2222): la tarea lleva «fusion-manual»: …" })]);
+  assert.deepEqual(ev.map((e) => e.kind), ["lista-revision"]);
+});

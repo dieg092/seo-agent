@@ -40,10 +40,10 @@ export function computeEvents(prev: TickState, curr: TaskSnap[]): TickEvent[] {
     if (noteChanged && /fusionada en main/i.test(note) && t.labels.includes("fusion-manual")) {
       events.push({ kind: "fusion-inesperada", taskId: t.id, title: t.title, detail: "Una tarea con «fusion-manual» aparece fusionada en main: revisar de inmediato." });
     }
-    if (noteChanged && /no fusionada:.*commit(?:s|\(s\))? de otras tareas/i.test(note)) {
+    if (noteChanged && /no fusionada.*commit(?:s|\(s\))? de otras tareas/i.test(note)) {
       events.push({ kind: "rama-bloqueada", taskId: t.id, title: t.title, detail: "La rama compartida trae commits de otras tareas: la fusión está bloqueada." });
     }
-    if (t.status === "done" && (before?.status !== "done" || noteChanged) && /no fusionada:.*fusion-manual/i.test(note)) {
+    if (t.status === "done" && (before?.status !== "done" || noteChanged) && /no fusionada.*fusion-manual/i.test(note)) {
       events.push({ kind: "lista-revision", taskId: t.id, title: t.title, detail: "Terminada y sin fusionar: lista para revisión y fusión manual." });
     }
     if (t.status === "blocked" && before?.status !== "blocked") {
