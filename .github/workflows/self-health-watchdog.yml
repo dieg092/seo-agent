@@ -25,6 +25,9 @@ on:
 
 jobs:
   watchdog:
+    # Secretos en el entorno «produccion», que solo admite la rama main: una rama
+    # (ia/** de Órbita) no puede leerlos aunque cambie este workflow.
+    environment: produccion
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

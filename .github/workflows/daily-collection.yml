@@ -7,6 +7,9 @@ on:
 
 jobs:
   collect:
+    # Secretos en el entorno «produccion», que solo admite la rama main: una rama
+    # (ia/** de Órbita) no puede leerlos aunque cambie este workflow.
+    environment: produccion
     runs-on: ubuntu-latest
     # 30 min: la inspección de URLs del domingo recorre todo el sitemap.
     timeout-minutes: 30
