@@ -1,0 +1,6 @@
+{
+  "autoMerge": false,
+  "rules": [
+    "Los workflows de main corren con los secretos del entorno produccion: la IA nunca fusiona en main de este repositorio, solo sube su rama para que la revise el propietario."
+  ]
+}
