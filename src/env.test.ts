@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { getEnv, loadEnv, withLocalUser, DEFAULT_TEST_DATABASE_URL } from "./env";
 
-const KEYS = ["SEO_ENV", "DATABASE_URL", "DIRECT_URL", "SEO_AGENT_TEST_FROM_FILE"] as const;
+const KEYS = ["SEO_ENV", "DATABASE_URL", "DIRECT_URL", "APP_FUNNEL_DATABASE_URL", "SEO_AGENT_TEST_FROM_FILE"] as const;
 
 // Ejecuta fn en un directorio temporal y restaura las variables tocadas al terminar.
 function withTempRoot(fn: (dir: string) => void): void {
@@ -28,12 +28,14 @@ test("loadEnv en modo test sin .env.test usa la BD local y no lee .env", () => {
     process.env.SEO_ENV = "test";
     process.env.DATABASE_URL = "postgresql://x@shell.neon.tech/db";
     delete process.env.DIRECT_URL;
+    process.env.APP_FUNNEL_DATABASE_URL = "postgresql://lector@app.neon.tech/db";
     delete process.env.SEO_AGENT_TEST_FROM_FILE;
 
     loadEnv(dir);
 
     assert.equal(process.env.DATABASE_URL, withLocalUser(DEFAULT_TEST_DATABASE_URL));
     assert.equal(process.env.DIRECT_URL, process.env.DATABASE_URL);
+    assert.equal(process.env.APP_FUNNEL_DATABASE_URL, process.env.DATABASE_URL);
     assert.equal(process.env.SEO_AGENT_TEST_FROM_FILE, undefined);
   });
 });

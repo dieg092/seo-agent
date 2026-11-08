@@ -28,6 +28,7 @@ un paso haya fallado; mira la alerta o el aviso de Telegram.
 | `collect-gsc-full` | `collect:search-console-full` | `SearchConsolePageDaily`, `SearchConsoleQueryTyped`, `SearchConsoleSegmentDaily`, `GscDataQuality` |
 | `collect-ga4` | `collect:analytics` | `AnalyticsSnapshot` y `AnalyticsLandingDaily` |
 | `collect-url-inspection` | `collect:url-inspection` | `UrlInspection` (por prioridad a diario, barrido de todo el sitemap los domingos) y `GscSitemapStatus` |
+| (sin cablear aún) | `collect:funnel` | `FunnelOrganicDaily`: vista `seo_funnel_daily` de la app con `APP_FUNNEL_DATABASE_URL` (rol de solo lectura, transacción `READ ONLY`, `statement_timeout` de 20 s); relee los últimos 35 días de Madrid, borra de esa ventana lo que la vista ya no devuelve y guarda la entrada `NULL` como `unknown` |
 | `audit-sitemap`, `audit-robots`, `audit-structured-data` | `audit:*` | sus tablas `*AuditResult` |
 | `audit-production` | `audit:production` | `ProductionProbeResult` y `PrivateIncident` |
 | `audit-performance` | `audit:performance` | `PerformanceAuditResult` (solo lunes o lanzado a mano) |

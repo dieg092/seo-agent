@@ -42,6 +42,8 @@ export function loadEnv(rootDir: string = join(__dirname, "..")): void {
   // Lo que no defina .env.test no se hereda del entorno: se usa la BD local.
   process.env.DATABASE_URL = parsed.DATABASE_URL || withLocalUser(DEFAULT_TEST_DATABASE_URL);
   process.env.DIRECT_URL = parsed.DIRECT_URL || process.env.DATABASE_URL;
+  // La BD de la app (vista seo_funnel_daily) tampoco se hereda: en tests es la local.
+  process.env.APP_FUNNEL_DATABASE_URL = parsed.APP_FUNNEL_DATABASE_URL || process.env.DATABASE_URL;
 
   // Configuración no secreta que antes llegaba del .env real. Los tests no
   // llaman a ningún servicio: los clientes externos se inyectan como dependencias.

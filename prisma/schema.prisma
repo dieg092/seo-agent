@@ -206,6 +206,27 @@ model AnalyticsLandingDaily {
   @@schema("seo_agent")
 }
 
+// Embudo orgánico de la app (vista seo_funnel_daily) por día de Madrid, página de
+// entrada del primer contacto y canal. Sin página de entrada guardada: 'unknown'.
+model FunnelOrganicDaily {
+  id                     String   @id @default(uuid())
+  date                   DateTime @db.Date
+  landingPath            String
+  channel                String
+  registros              Int
+  bodasPublicadas        Int
+  primerasConfirmaciones Int
+  pagos                  Int
+  revenueCents           Int
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([date, landingPath, channel])
+  @@index([date])
+  @@index([landingPath])
+  @@schema("seo_agent")
+}
+
 model AnalyticsSnapshot {
   id              String   @id @default(uuid())
   date            DateTime @db.Date
