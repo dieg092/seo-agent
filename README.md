@@ -33,6 +33,23 @@ un paso haya fallado; mira la alerta o el aviso de Telegram.
 | `audit-production` | `audit:production` | `ProductionProbeResult` y `PrivateIncident` |
 | `audit-performance` | `audit:performance` | `PerformanceAuditResult` (solo lunes o lanzado a mano) |
 
+### Rastreo semanal propio (`crawl:weekly`)
+
+`pnpm crawl:weekly` rastrea la web desde su sitemap (§11 de la spec) y
+guarda una fila por URL y ejecución en `CrawlPage`: estado HTTP, redirección,
+canónica, meta robots, `X-Robots-Tag`, título, H1, enlaces internos públicos
+salientes y tamaño. Aún no está en ningún workflow: el dueño lo cablea.
+
+- Respeta `robots.txt` (si da 5xx no rastrea nada; si da 4xx, todo).
+- Concurrencia 2, pausa de 300 ms, máximo 600 páginas y 3 saltos desde el
+  sitemap (`CRAWL_*` en `src/crawler/weeklyCrawler.ts`).
+- Solo pide rutas `public` de `src/privacy/sitePrivacy.ts`: nunca webs de
+  parejas, invitaciones ni rutas con sesión. Los enlaces a ellas solo se
+  cuentan (`privateLinkCount`); una canónica o redirección privada se guarda
+  redactada. Necesita `SEO_PRIVATE_URL_KEY`.
+- No pide imágenes ni estáticos y no sigue redirecciones: guarda el destino
+  y, si es público, lo rastrea como otra URL.
+
 ### URLs privadas
 
 Las webs de boda son privadas. Ninguna tabla guarda su URL en claro: se

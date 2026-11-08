@@ -175,6 +175,39 @@ model ProductionProbeResult {
   @@schema("seo_agent")
 }
 
+// Rastreo semanal propio (§11): una fila por URL pública y ejecución. Solo se piden
+// rutas públicas; la canónica y la redirección se guardan redactadas si son privadas.
+model CrawlPage {
+  id               String   @id @default(uuid())
+  runAt            DateTime
+  url              String
+  inSitemap        Boolean
+  // 0 si viene del sitemap; si no, saltos desde el sitemap
+  depth            Int
+  blockedByRobots  Boolean  @default(false)
+  status           Int?
+  redirectTo       String?
+  contentType      String?
+  bytes            Int?
+  durationMs       Int?
+  canonical        String?
+  metaRobots       String?
+  xRobotsTag       String?
+  title            String?
+  h1               String[]
+  // enlaces <a> a rutas públicas de la web, normalizados y sin repetir
+  internalLinks    String[]
+  // enlaces a rutas privadas: no se guardan, solo se cuentan
+  privateLinkCount Int      @default(0)
+  error            String?
+  createdAt        DateTime @default(now())
+
+  @@unique([runAt, url])
+  @@index([runAt])
+  @@index([url])
+  @@schema("seo_agent")
+}
+
 // Página privada vista fuera de su sitio. La URL real solo se guarda cifrada (AES-256-GCM).
 model PrivateIncident {
   id           String    @id @default(uuid())
