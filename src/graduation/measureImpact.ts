@@ -1,27 +1,25 @@
 // src/graduation/measureImpact.ts
 import { prisma } from "../db";
 import { getEnv } from "../env";
-import { computeOutcome } from "./computeOutcome";
+import { computeOutcome, evaluableFrom, measurementWindows, type WindowMetrics } from "./computeOutcome";
 import { openPullRequestWithFileChange, getExistingFileSha } from "../tier1/github";
 import { recordAlert } from "../alerts/recordAlert";
 
-const WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Un cambio no se puede medir antes de este margen (ventana de 28 días + retrasos de GSC):
+// filtra la consulta; el corte exacto lo decide computeOutcome (pending).
+const MIN_AGE_MS = 31 * DAY_MS;
 const GRADUATION_THRESHOLD = 10;
 
-async function sumClicksSiteWide(start: Date, end: Date): Promise<number> {
+async function sumWindow(page: string | null, start: Date, end: Date): Promise<WindowMetrics> {
   const rows = await prisma.searchConsoleSnapshot.findMany({
-    where: { date: { gte: start, lt: end } },
-    select: { clicks: true },
+    where: { ...(page ? { page } : {}), date: { gte: start, lt: end } },
+    select: { clicks: true, impressions: true },
   });
-  return rows.reduce((sum, r) => sum + r.clicks, 0);
-}
-
-async function sumClicksForPage(page: string, start: Date, end: Date): Promise<number> {
-  const rows = await prisma.searchConsoleSnapshot.findMany({
-    where: { page, date: { gte: start, lt: end } },
-    select: { clicks: true },
-  });
-  return rows.reduce((sum, r) => sum + r.clicks, 0);
+  return rows.reduce(
+    (sum, r) => ({ clicks: sum.clicks + r.clicks, impressions: sum.impressions + r.impressions }),
+    { clicks: 0, impressions: 0 },
+  );
 }
 
 export async function measureAppliedChanges(deps: {
@@ -42,7 +40,7 @@ export async function measureAppliedChanges(deps: {
   };
 
   const now = new Date();
-  const cutoff = new Date(now.getTime() - WINDOW_MS);
+  const cutoff = new Date(now.getTime() - MIN_AGE_MS);
 
   const candidates = await prisma.appliedChange.findMany({
     where: { status: "merged", updatedAt: { lte: cutoff } },
@@ -56,32 +54,42 @@ export async function measureAppliedChanges(deps: {
     const already = await prisma.impactMeasurement.findUnique({ where: { appliedChangeId: change.id } });
     if (already) continue;
 
+    // Hasta que exista DeployEvent (fase 4), el merge hace de despliegue.
     const mergedAt = change.updatedAt;
-    let before: number;
-    let after: number;
+    if (now.getTime() < evaluableFrom(mergedAt).getTime()) continue;
 
+    let page: string | null = null;
     if (change.findingType === "internal-link-suggestion") {
       const opportunity = await prisma.opportunity.findUnique({ where: { stableKey: change.opportunityStableKey } });
       const detail = opportunity?.detail as { sourceSlug?: string } | null;
       if (!detail?.sourceSlug) continue;
       const baseUrl = getEnv("SITE_BASE_URL");
-      const page = `${baseUrl}/blog/${detail.sourceSlug}`;
-      before = await sumClicksForPage(page, new Date(mergedAt.getTime() - WINDOW_MS), mergedAt);
-      after = await sumClicksForPage(page, mergedAt, new Date(mergedAt.getTime() + WINDOW_MS));
-    } else {
-      before = await sumClicksSiteWide(new Date(mergedAt.getTime() - WINDOW_MS), mergedAt);
-      after = await sumClicksSiteWide(mergedAt, new Date(mergedAt.getTime() + WINDOW_MS));
+      page = `${baseUrl}/blog/${detail.sourceSlug}`;
     }
 
-    const outcome = computeOutcome(before, after);
+    const windows = measurementWindows(mergedAt);
+    const before = await sumWindow(page, windows.before.start, windows.before.end);
+    const after = await sumWindow(page, windows.after.start, windows.after.end);
+
+    // Modo de bajo volumen (§15.2, R-B5): el control y las bandas de ruido no se
+    // activan hasta que el sitio pase de 1.000 clics no-marca al mes.
+    const { outcome } = computeOutcome({
+      deployedAt: mergedAt,
+      now,
+      before,
+      after,
+      metric: "clicks",
+      mode: "low",
+    });
+    if (outcome === "pending") continue;
 
     await prisma.impactMeasurement.create({
       data: {
         appliedChangeId: change.id,
         findingType: change.findingType,
         outcome,
-        beforeMetric: before,
-        afterMetric: after,
+        beforeMetric: before.clicks,
+        afterMetric: after.clicks,
       },
     });
     measured += 1;
@@ -119,7 +127,7 @@ export async function measureAppliedChanges(deps: {
               branchName,
               commitMessage: `revert: deshacer cambio de ${change.prUrl} (impacto negativo detectado)`,
               prTitle: `[SEO Agent] Revertir PR #${change.prNumber} — impacto negativo detectado`,
-              prBody: `El cambio mergeado en ${change.prUrl} (findingType: ${change.findingType}) mostró una caída de clicks de al menos el 15% en las 2 semanas posteriores al merge, comparado con las 2 semanas previas.\n\nEste PR restaura el contenido anterior. Revisa antes de mergear — el sistema nunca mergea una reversión automáticamente.`,
+              prBody: `El cambio mergeado en ${change.prUrl} (findingType: ${change.findingType}) mostró una caída de clics de más del 50% en los 28 días posteriores al merge (contando el retraso de GSC), comparado con los 28 días previos.\n\nEste PR restaura el contenido anterior. Revisa antes de mergear — el sistema nunca mergea una reversión automáticamente.`,
               existingFileSha: existingSha,
             } as Parameters<typeof openPullRequestWithFileChange>[0]);
 

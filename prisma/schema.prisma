@@ -322,8 +322,29 @@ model Opportunity {
   reviewedNoActionAt          DateTime?
   reviewedNoActionContentHash String?
   reviewedNoActionReason      String?
+  // Ciclo de vida de la spec §6 (src/opportunity/lifecycle.ts). `status` (open/resolved)
+  // se mantiene como hasta ahora para tier1, tier2 y el panel.
+  state                       String    @default("open")
+  stateChangedAt              DateTime  @default(now())
+  confirmations               Int       @default(0)
+  absences                    Int       @default(0)
+  oscillations                Int       @default(0)
+  oscillationsSince           DateTime?
+  dismissedValue              Float?
+  staleAt                     DateTime?
+  // Atributos del catálogo (src/prioritization/catalog.ts) y factores de la prioridad §12.2.
+  page                        String?
+  operation                   String?
+  autonomy                    String    @default("A2")
+  lane                        String    @default("technical")
+  severity                    String    @default("medium")
+  confidence                  String    @default("observed")
+  businessValue               Float     @default(1)
+  priorityFactors             Json?
 
   @@index([status])
+  @@index([state])
+  @@index([lane])
   @@schema("seo_agent")
 }
 

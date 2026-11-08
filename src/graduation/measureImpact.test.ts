@@ -55,7 +55,7 @@ test("measureAppliedChanges measures a robots-type change site-wide and incremen
     await resetCheapTables();
     await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/a" } });
 
-    const mergedAt = daysAgo(15);
+    const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: `test-${Math.random()}`,
@@ -76,7 +76,7 @@ test("measureAppliedChanges measures a robots-type change site-wide and incremen
       data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/a", query: "q", clicks: 30, impressions: 300, ctr: 0.1, position: 5 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/a", query: "q", clicks: 36, impressions: 300, ctr: 0.12, position: 5 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/a", query: "q", clicks: 50, impressions: 300, ctr: 0.17, position: 5 },
     });
 
     const result = await measureAppliedChanges({ alert: async () => {} });
@@ -102,7 +102,7 @@ test("measureAppliedChanges resets consecutiveGood and revokes autoMergeEligible
       data: { findingType: "robots-blocks-all", consecutiveGood: 10, autoMergeEligible: true },
     });
 
-    const mergedAt = daysAgo(15);
+    const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: `test-${Math.random()}`,
@@ -122,7 +122,7 @@ test("measureAppliedChanges resets consecutiveGood and revokes autoMergeEligible
       data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/b", query: "q", clicks: 100, impressions: 500, ctr: 0.2, position: 3 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/b", query: "q", clicks: 50, impressions: 500, ctr: 0.1, position: 6 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/b", query: "q", clicks: 40, impressions: 500, ctr: 0.08, position: 6 },
     });
 
     await measureAppliedChanges({ alert: async () => {} });
@@ -157,7 +157,7 @@ test("measureAppliedChanges measures an internal-link-suggestion change against 
       },
     });
 
-    const mergedAt = daysAgo(15);
+    const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: opportunity.stableKey,
@@ -174,10 +174,10 @@ test("measureAppliedChanges measures an internal-link-suggestion change against 
     );
 
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page, query: "q", clicks: 20, impressions: 100, ctr: 0.2, position: 4 },
+      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page, query: "q", clicks: 20, impressions: 300, ctr: 0.067, position: 4 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page, query: "q", clicks: 25, impressions: 100, ctr: 0.25, position: 3 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page, query: "q", clicks: 31, impressions: 300, ctr: 0.103, position: 3 },
     });
 
     const result = await measureAppliedChanges({ alert: async () => {} });
@@ -186,13 +186,13 @@ test("measureAppliedChanges measures an internal-link-suggestion change against 
     const measurement = await prisma.impactMeasurement.findUnique({ where: { appliedChangeId: change.id } });
     assert.equal(measurement?.outcome, "positive");
     assert.equal(measurement?.beforeMetric, 20);
-    assert.equal(measurement?.afterMetric, 25);
+    assert.equal(measurement?.afterMetric, 31);
 
     await prisma.searchConsoleSnapshot.deleteMany({ where: { page } });
   });
 });
 
-test("measureAppliedChanges skips changes merged less than 14 days ago", async () => {
+test("measureAppliedChanges skips changes whose 28-day window plus GSC lag has not ended", async () => {
   await withEmptyTables(async () => {
     await resetCheapTables();
 
@@ -224,7 +224,7 @@ test("measureAppliedChanges reports newly-graduated findingTypes and does not re
       data: { findingType: "robots-blocks-all", consecutiveGood: 9, autoMergeEligible: false },
     });
 
-    const mergedAt = daysAgo(15);
+    const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: `test-${Math.random()}`,
@@ -244,7 +244,7 @@ test("measureAppliedChanges reports newly-graduated findingTypes and does not re
       data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 30, impressions: 100, ctr: 0.1, position: 5 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 30, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
     });
 
     const result = await measureAppliedChanges({ alert: async () => {} });
@@ -263,7 +263,7 @@ test("measureAppliedChanges opens a revert PR and sends an alert when a merged c
     await resetCheapTables();
     await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revert-a" } });
 
-    const mergedAt = daysAgo(15);
+    const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: `test-${Math.random()}`,
@@ -284,7 +284,7 @@ test("measureAppliedChanges opens a revert PR and sends an alert when a merged c
       data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revert-a", query: "q", clicks: 100, impressions: 500, ctr: 0.2, position: 3 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revert-a", query: "q", clicks: 50, impressions: 500, ctr: 0.1, position: 6 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revert-a", query: "q", clicks: 40, impressions: 500, ctr: 0.08, position: 6 },
     });
 
     let openPrCalled = false;
@@ -321,7 +321,7 @@ test("measureAppliedChanges sends an alert (no revert PR) when previousContent i
     await resetCheapTables();
     await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revert-b" } });
 
-    const mergedAt = daysAgo(15);
+    const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: `test-${Math.random()}`,
@@ -340,7 +340,7 @@ test("measureAppliedChanges sends an alert (no revert PR) when previousContent i
       data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revert-b", query: "q", clicks: 100, impressions: 500, ctr: 0.2, position: 3 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revert-b", query: "q", clicks: 50, impressions: 500, ctr: 0.1, position: 6 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revert-b", query: "q", clicks: 40, impressions: 500, ctr: 0.08, position: 6 },
     });
 
     let openPrCalled = false;
@@ -372,7 +372,7 @@ test("measureAppliedChanges reports revoked findingTypes when a negative outcome
       data: { findingType: "robots-blocks-all", consecutiveGood: 10, autoMergeEligible: true },
     });
 
-    const mergedAt = daysAgo(15);
+    const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: `test-${Math.random()}`,
@@ -391,7 +391,7 @@ test("measureAppliedChanges reports revoked findingTypes when a negative outcome
       data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revoke", query: "q", clicks: 100, impressions: 500, ctr: 0.2, position: 3 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revoke", query: "q", clicks: 50, impressions: 500, ctr: 0.1, position: 6 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/revoke", query: "q", clicks: 40, impressions: 500, ctr: 0.08, position: 6 },
     });
 
     const result = await measureAppliedChanges({
@@ -413,7 +413,7 @@ test("measureAppliedChanges alerts on newly-graduated findingTypes", async () =>
       data: { findingType: "robots-blocks-all", consecutiveGood: 9, autoMergeEligible: false },
     });
 
-    const mergedAt = daysAgo(15);
+    const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: `test-${Math.random()}`,
@@ -432,7 +432,7 @@ test("measureAppliedChanges alerts on newly-graduated findingTypes", async () =>
       data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 30, impressions: 100, ctr: 0.1, position: 5 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 30, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
     });
 
     let alertCount = 0;
@@ -453,7 +453,7 @@ test("measureAppliedChanges does not throw when alert dispatch fails (best-effor
     await resetCheapTables();
     await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/alert-fail" } });
 
-    const mergedAt = daysAgo(15);
+    const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: `test-${Math.random()}`,
@@ -472,7 +472,7 @@ test("measureAppliedChanges does not throw when alert dispatch fails (best-effor
       data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/alert-fail", query: "q", clicks: 100, impressions: 500, ctr: 0.2, position: 3 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/alert-fail", query: "q", clicks: 50, impressions: 500, ctr: 0.1, position: 6 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/alert-fail", query: "q", clicks: 40, impressions: 500, ctr: 0.08, position: 6 },
     });
 
     const result = await measureAppliedChanges({

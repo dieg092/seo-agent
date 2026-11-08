@@ -55,7 +55,11 @@ test("computeCurrentFindings + syncOpportunities creates an Opportunity from a r
       assert.equal(opportunities.length, 1);
       assert.equal(opportunities[0].findingType, "robots-blocks-all");
       assert.equal(opportunities[0].impactScore, 10);
-      assert.equal(opportunities[0].priorityScore, 10);
+      // §12.2: critical (10) × value 1 × observed (1) × urgency 3 / (effort 1 × A1 1).
+      assert.equal(opportunities[0].priorityScore, 30);
+      // Crítico: se abre con 1 evaluación y va al carril urgente.
+      assert.equal(opportunities[0].state, "open");
+      assert.equal(opportunities[0].lane, "urgent");
 
       await resetAuditTables();
     })
@@ -280,6 +284,44 @@ test("syncOpportunities defaults sourcesInScope to all sources when not provided
   assert.equal(result.resolved, 1);
 
   await resetAuditTables();
+});
+
+test("syncOpportunities guarda el estado §6 y los factores de prioridad §12.2 del hallazgo", async () => {
+  // Solo toca su propia fila: sourcesInScope vacío no resuelve nada más.
+  const suffix = Math.random().toString(36).slice(2);
+  const finding = {
+    source: "content" as const,
+    findingType: "content-low-ctr" as const,
+    stableKeyInput: `content-low-ctr:https://miwebdeboda.com/precios?prueba=${suffix}`,
+    title: "CTR bajo en una página de prueba",
+    detail: { page: "https://miwebdeboda.com/precios" },
+    sourceRefId: `prueba-${suffix}`,
+  };
+  const t0 = new Date("2026-11-01T06:00:00Z");
+  try {
+    await syncOpportunities([finding], { sourcesInScope: [], now: t0 });
+    let opp = await prisma.opportunity.findFirstOrThrow({ where: { sourceRefId: finding.sourceRefId } });
+    assert.equal(opp.state, "detected");
+    assert.equal(opp.confirmations, 1);
+    assert.equal(opp.status, "open");
+    assert.equal(opp.lane, "content");
+    assert.equal(opp.operation, "meta-title-description");
+    assert.equal(opp.page, "https://miwebdeboda.com/precios");
+    // product: value = 2; medium (2,5) × 2 × derived (0,8) / (effort 2 × A1 1) = 2.
+    assert.equal(opp.businessValue, 2);
+    const factors = opp.priorityFactors as Record<string, number>;
+    assert.equal(factors.severityW, 2.5);
+    assert.equal(factors.confidenceW, 0.8);
+    assert.equal(factors.effort, 2);
+    assert.ok(Math.abs(opp.priorityScore - 2) < 1e-9);
+
+    await syncOpportunities([finding], { sourcesInScope: [], now: new Date(t0.getTime() + 24 * 60 * 60 * 1000) });
+    opp = await prisma.opportunity.findFirstOrThrow({ where: { sourceRefId: finding.sourceRefId } });
+    assert.equal(opp.state, "open");
+    assert.equal(opp.confirmations, 2);
+  } finally {
+    await prisma.opportunity.deleteMany({ where: { sourceRefId: finding.sourceRefId } });
+  }
 });
 
 test("computeCurrentFindings includes cannibalization findings computed from recent SearchConsoleSnapshot rows", async () => {
