@@ -53,7 +53,7 @@ function daysAgo(n: number): Date {
 test("measureAppliedChanges measures a robots-type change site-wide and increments the graduation counter on a positive outcome", async () => {
   await withEmptyTables(async () => {
     await resetCheapTables();
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/a" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
 
     const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
@@ -89,14 +89,14 @@ test("measureAppliedChanges measures a robots-type change site-wide and incremen
     assert.equal(record?.consecutiveGood, 1);
     assert.equal(record?.autoMergeEligible, false);
 
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/a" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
   });
 });
 
 test("measureAppliedChanges resets consecutiveGood and revokes autoMergeEligible on a negative outcome, even if already graduated", async () => {
   await withEmptyTables(async () => {
     await resetCheapTables();
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/b" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
 
     await prisma.graduationRecord.create({
       data: { findingType: "robots-blocks-all", consecutiveGood: 10, autoMergeEligible: true },
@@ -131,7 +131,7 @@ test("measureAppliedChanges resets consecutiveGood and revokes autoMergeEligible
     assert.equal(record?.consecutiveGood, 0);
     assert.equal(record?.autoMergeEligible, false);
 
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/b" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
   });
 });
 
@@ -218,7 +218,7 @@ test("measureAppliedChanges skips changes whose 28-day window plus GSC lag has n
 test("measureAppliedChanges reports newly-graduated findingTypes and does not re-report already-graduated ones", async () => {
   await withEmptyTables(async () => {
     await resetCheapTables();
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/grad" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
 
     await prisma.graduationRecord.create({
       data: { findingType: "robots-blocks-all", consecutiveGood: 9, autoMergeEligible: false },
@@ -241,10 +241,10 @@ test("measureAppliedChanges reports newly-graduated findingTypes and does not re
     );
 
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 30, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 30, impressions: 400, ctr: 0.075, position: 5 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 60, impressions: 400, ctr: 0.15, position: 4 },
     });
 
     const result = await measureAppliedChanges({ alert: async () => {} });
@@ -254,14 +254,14 @@ test("measureAppliedChanges reports newly-graduated findingTypes and does not re
     assert.equal(record?.consecutiveGood, 10);
     assert.equal(record?.autoMergeEligible, true);
 
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/grad" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
   });
 });
 
 test("measureAppliedChanges opens a revert PR and sends an alert when a merged change with previousContent shows negative impact", async () => {
   await withEmptyTables(async () => {
     await resetCheapTables();
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revert-a" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
 
     const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
@@ -312,14 +312,14 @@ test("measureAppliedChanges opens a revert PR and sends an alert when a merged c
     assert.equal(revertChange?.status, "open");
     assert.equal(revertChange?.revertsAppliedChangeId, change.id);
 
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revert-a" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
   });
 });
 
 test("measureAppliedChanges sends an alert (no revert PR) when previousContent is missing", async () => {
   await withEmptyTables(async () => {
     await resetCheapTables();
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revert-b" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
 
     const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
@@ -359,14 +359,14 @@ test("measureAppliedChanges sends an alert (no revert PR) when previousContent i
     assert.equal(openPrCalled, false);
     assert.match(alertBody, /reversión manual/);
 
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revert-b" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
   });
 });
 
 test("measureAppliedChanges reports revoked findingTypes when a negative outcome hits an already-graduated category", async () => {
   await withEmptyTables(async () => {
     await resetCheapTables();
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revoke" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
 
     await prisma.graduationRecord.create({
       data: { findingType: "robots-blocks-all", consecutiveGood: 10, autoMergeEligible: true },
@@ -400,14 +400,14 @@ test("measureAppliedChanges reports revoked findingTypes when a negative outcome
 
     assert.deepEqual(result.revoked, ["robots-blocks-all"]);
 
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/revoke" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
   });
 });
 
 test("measureAppliedChanges alerts on newly-graduated findingTypes", async () => {
   await withEmptyTables(async () => {
     await resetCheapTables();
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/grad-alert" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
 
     await prisma.graduationRecord.create({
       data: { findingType: "robots-blocks-all", consecutiveGood: 9, autoMergeEligible: false },
@@ -429,10 +429,10 @@ test("measureAppliedChanges alerts on newly-graduated findingTypes", async () =>
       change.id
     );
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 30, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 30, impressions: 400, ctr: 0.075, position: 5 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() + 10 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 60, impressions: 400, ctr: 0.15, position: 4 },
     });
 
     let alertCount = 0;
@@ -444,14 +444,14 @@ test("measureAppliedChanges alerts on newly-graduated findingTypes", async () =>
 
     assert.equal(alertCount, 1);
 
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/grad-alert" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
   });
 });
 
 test("measureAppliedChanges does not throw when alert dispatch fails (best-effort)", async () => {
   await withEmptyTables(async () => {
     await resetCheapTables();
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/alert-fail" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
 
     const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
@@ -483,19 +483,19 @@ test("measureAppliedChanges does not throw when alert dispatch fails (best-effor
 
     assert.equal(result.measured, 1);
 
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/alert-fail" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
   });
 });
 
 test("measureAppliedChanges records an inconclusive outcome but does not count it toward graduation", async () => {
   await withEmptyTables(async () => {
     await resetCheapTables();
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/inc" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
     await prisma.graduationRecord.create({
       data: { findingType: "robots-blocks-all", consecutiveGood: 9, autoMergeEligible: false },
     });
 
-    const mergedAt = daysAgo(15);
+    const mergedAt = daysAgo(40);
     const change = await prisma.appliedChange.create({
       data: {
         opportunityStableKey: `test-${Math.random()}`,
@@ -525,6 +525,6 @@ test("measureAppliedChanges records an inconclusive outcome but does not count i
     assert.equal(record?.consecutiveGood, 9);
     assert.equal(record?.autoMergeEligible, false);
 
-    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/inc" } });
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: { startsWith: "https://measure-test.example/" } } });
   });
 });
