@@ -25,6 +25,7 @@ import {
   type OpportunityState,
 } from "../opportunity/lifecycle";
 import type { Finding, FindingSource } from "./types";
+import { computeAnnexBFindings } from "../detectors/loadAnnexB";
 
 export const ALL_FINDING_SOURCES: FindingSource[] = [
   "sitemap",
@@ -34,6 +35,12 @@ export const ALL_FINDING_SOURCES: FindingSource[] = [
   "internalLinking",
   "content",
   "siteArchitecture",
+  "indexation",
+  "privacy",
+  "crawl",
+  "visibility",
+  "dataQuality",
+  "funnel",
 ];
 
 function aggregateClicksByPage(rows: { page: string; clicks: number }[]): { page: string; clicks: number }[] {
@@ -65,7 +72,13 @@ function aggregatePageStats(
   }));
 }
 
-export async function computeCurrentFindings(): Promise<Finding[]> {
+/**
+ * `annexB: false` deja solo los detectores de antes (lo usan los tests que
+ * cuentan hallazgos exactos). Con el Anexo B, `visibility-declining`
+ * sustituye a `content-declining`.
+ */
+export async function computeCurrentFindings(opts: { annexB?: boolean; now?: Date } = {}): Promise<Finding[]> {
+  const annexB = opts.annexB ?? true;
   const findings: Finding[] = [];
 
   const latestSitemap = await prisma.sitemapAuditResult.findFirst({ orderBy: { runAt: "desc" } });
@@ -120,7 +133,7 @@ export async function computeCurrentFindings(): Promise<Finding[]> {
   });
   const recentByPage = aggregateClicksByPage(recentSnapshots);
   const priorByPage = aggregateClicksByPage(priorSnapshots);
-  findings.push(...extractDecliningFindings(recentByPage, priorByPage));
+  if (!annexB) findings.push(...extractDecliningFindings(recentByPage, priorByPage));
 
   findings.push(
     ...extractQueryGapFindings(
@@ -147,6 +160,8 @@ export async function computeCurrentFindings(): Promise<Finding[]> {
   findings.push(...extractLowCtrFindings(recentPageStats));
   findings.push(...extractNearPage1Findings(recentPageStats, priorPageStats));
   findings.push(...extractHighImpressionLowPositionFindings(recentPageStats));
+
+  if (annexB) findings.push(...(await computeAnnexBFindings(opts.now)));
 
   return findings;
 }

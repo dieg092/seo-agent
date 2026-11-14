@@ -6,7 +6,13 @@ export type FindingSource =
   | "performance"
   | "internalLinking"
   | "content"
-  | "siteArchitecture";
+  | "siteArchitecture"
+  | "indexation"
+  | "privacy"
+  | "crawl"
+  | "visibility"
+  | "dataQuality"
+  | "funnel";
 
 export type FindingType =
   | "sitemap-malformed"
@@ -34,7 +40,30 @@ export type FindingType =
   | "content-high-impression-low-position"
   | "site-architecture-template-performance"
   | "site-architecture-near-duplicate"
-  | "site-architecture-missing-template";
+  | "site-architecture-missing-template"
+  | "index-dropped"
+  | "index-not-indexed"
+  | "index-canonical-mismatch"
+  | "index-blocked"
+  | "rich-results-error"
+  | "index-bloat"
+  | "noindex-commercial"
+  | "sitemap-gsc-error"
+  | "sitemap-dead-url"
+  | "private-page-exposed"
+  | "meta-missing"
+  | "meta-duplicate"
+  | "h1-missing-or-multiple"
+  | "broken-internal-link"
+  | "link-to-redirect"
+  | "orphan-page"
+  | "deep-page"
+  | "visibility-declining"
+  | "segment-declining"
+  | "image-opportunity"
+  | "data-quality-gap"
+  | "collector-failing"
+  | "funnel-drop";
 
 export interface Finding {
   source: FindingSource;

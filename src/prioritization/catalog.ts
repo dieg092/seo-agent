@@ -51,6 +51,32 @@ const CATALOG: Record<FindingType, CatalogEntry> = {
   "site-architecture-template-performance": { severity: "medium", confidence: "derived", autonomy: "A2", lane: "strategy", operation: null, indexationRisk: false },
   "site-architecture-near-duplicate": { severity: "medium", confidence: "heuristic", autonomy: "A2", lane: "content", operation: null, indexationRisk: false },
   "site-architecture-missing-template": { severity: "medium", confidence: "derived", autonomy: "A2", lane: "strategy", operation: null, indexationRisk: false },
+  // Anexo B, fase 2c (src/detectors/annexB.ts). Donde el Anexo B da dos
+  // severidades según el valor de la página, aquí va la menor: el valor ya
+  // entra en la prioridad (§12.2).
+  "index-dropped": { severity: "high", confidence: "observed", autonomy: "A2", lane: "urgent", operation: null, indexationRisk: true },
+  "index-not-indexed": { severity: "medium", confidence: "observed", autonomy: "A2", lane: "technical", operation: null, indexationRisk: false },
+  "index-canonical-mismatch": { severity: "high", confidence: "observed", autonomy: "A2", lane: "technical", operation: null, indexationRisk: false },
+  "index-blocked": { severity: "critical", confidence: "observed", autonomy: "A2", lane: "urgent", operation: null, indexationRisk: true },
+  "rich-results-error": { severity: "medium", confidence: "observed", autonomy: "A2", lane: "technical", operation: null, indexationRisk: false },
+  "index-bloat": { severity: "low", confidence: "derived", autonomy: "A2", lane: "strategy", operation: null, indexationRisk: false },
+  "noindex-commercial": { severity: "high", confidence: "observed", autonomy: "A2", lane: "strategy", operation: null, indexationRisk: true },
+  "sitemap-gsc-error": { severity: "high", confidence: "observed", autonomy: "A2", lane: "technical", operation: null, indexationRisk: false },
+  "sitemap-dead-url": { severity: "high", confidence: "observed", autonomy: "A1", lane: "technical", operation: "sitemap-drop-dead-url", indexationRisk: false },
+  "private-page-exposed": { severity: "critical", confidence: "observed", autonomy: "A3", lane: "urgent", operation: "manual", indexationRisk: false },
+  "meta-missing": { severity: "high", confidence: "observed", autonomy: "A1", lane: "content", operation: "meta-title-description", indexationRisk: false },
+  "meta-duplicate": { severity: "medium", confidence: "observed", autonomy: "A1", lane: "content", operation: "meta-title-description", indexationRisk: false },
+  "h1-missing-or-multiple": { severity: "low", confidence: "observed", autonomy: "A2", lane: "technical", operation: null, indexationRisk: false },
+  "broken-internal-link": { severity: "medium", confidence: "observed", autonomy: "A1", lane: "links", operation: "broken-internal-link-fix", indexationRisk: false },
+  "link-to-redirect": { severity: "low", confidence: "observed", autonomy: "A1", lane: "links", operation: "broken-internal-link-fix", indexationRisk: false },
+  "orphan-page": { severity: "medium", confidence: "observed", autonomy: "A1", lane: "links", operation: "internal-links-batch", indexationRisk: false },
+  "deep-page": { severity: "low", confidence: "derived", autonomy: "A2", lane: "links", operation: null, indexationRisk: false },
+  "visibility-declining": { severity: "medium", confidence: "derived", autonomy: "A1", lane: "content", operation: "investigation", indexationRisk: false },
+  "segment-declining": { severity: "low", confidence: "derived", autonomy: "A1", lane: "content", operation: "investigation", indexationRisk: false },
+  "image-opportunity": { severity: "low", confidence: "derived", autonomy: "A1", lane: "content", operation: "image-alt", indexationRisk: false },
+  "data-quality-gap": { severity: "high", confidence: "observed", autonomy: "A3", lane: "technical", operation: "manual", indexationRisk: false },
+  "collector-failing": { severity: "high", confidence: "observed", autonomy: "A3", lane: "technical", operation: "manual", indexationRisk: false },
+  "funnel-drop": { severity: "high", confidence: "derived", autonomy: "A3", lane: "strategy", operation: "manual", indexationRisk: false },
 };
 
 export function getCatalogEntry(findingType: FindingType): CatalogEntry {

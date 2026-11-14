@@ -32,7 +32,7 @@ async function resetAuditTables() {
   await prisma.performanceAuditResult.deleteMany({});
 }
 
-// Since computeCurrentFindings() now also reads real LinkSuggestion/
+// Since computeCurrentFindings({ annexB: false }) now also reads real LinkSuggestion/
 // SearchConsoleSnapshot rows unconditionally (Task 8), every test below
 // that counts opportunities/findings WITHOUT filtering by source must
 // isolate those two tables too — resetAuditTables() only ever cleared the
@@ -47,7 +47,7 @@ test("computeCurrentFindings + syncOpportunities creates an Opportunity from a r
         data: { isValid: false, errors: ["robots.txt contiene 'Disallow: /' — bloquearía la indexación de todo el sitio"] },
       });
 
-      const findings = await computeCurrentFindings();
+      const findings = await computeCurrentFindings({ annexB: false });
       const result = await syncOpportunities(findings);
 
       assert.equal(result.created, 1);
@@ -75,9 +75,9 @@ test("running syncOpportunities twice with the same findings does not duplicate"
         data: { isValid: false, errors: ["robots.txt no declara ninguna directiva Sitemap:"] },
       });
 
-      const findings1 = await computeCurrentFindings();
+      const findings1 = await computeCurrentFindings({ annexB: false });
       await syncOpportunities(findings1);
-      const findings2 = await computeCurrentFindings();
+      const findings2 = await computeCurrentFindings({ annexB: false });
       const result2 = await syncOpportunities(findings2);
 
       assert.equal(result2.created, 0);
@@ -98,11 +98,11 @@ test("an Opportunity is auto-resolved when its finding disappears, then reopened
       await prisma.robotsAuditResult.create({
         data: { isValid: false, errors: ["robots.txt no declara ninguna directiva Sitemap:"] },
       });
-      await syncOpportunities(await computeCurrentFindings());
+      await syncOpportunities(await computeCurrentFindings({ annexB: false }));
 
       // Second run: robots.txt is now fixed, no errors.
       await prisma.robotsAuditResult.create({ data: { isValid: true, errors: [] } });
-      const resultResolved = await syncOpportunities(await computeCurrentFindings());
+      const resultResolved = await syncOpportunities(await computeCurrentFindings({ annexB: false }));
 
       assert.equal(resultResolved.resolved, 1);
       let opportunity = await prisma.opportunity.findFirstOrThrow({});
@@ -113,7 +113,7 @@ test("an Opportunity is auto-resolved when its finding disappears, then reopened
       await prisma.robotsAuditResult.create({
         data: { isValid: false, errors: ["robots.txt no declara ninguna directiva Sitemap:"] },
       });
-      const resultReopened = await syncOpportunities(await computeCurrentFindings());
+      const resultReopened = await syncOpportunities(await computeCurrentFindings({ annexB: false }));
 
       assert.equal(resultReopened.reopened, 1);
       opportunity = await prisma.opportunity.findFirstOrThrow({});
@@ -138,7 +138,7 @@ test("computeCurrentFindings only reads the most recent structuredData batch, no
     data: { url: "https://example.com/new", schemaType: "none", isValid: false, errors: ["fresh"], runAt: newerRunAt },
   });
 
-  const findings = await computeCurrentFindings();
+  const findings = await computeCurrentFindings({ annexB: false });
   const structuredDataFindings = findings.filter((f) => f.source === "structuredData");
 
   assert.equal(structuredDataFindings.length, 1);
@@ -182,7 +182,7 @@ test("computeCurrentFindings returns no findings when an audit table has zero ro
 
   await withEmptyLinkSuggestions(() =>
     withEmptySearchConsoleSnapshots(async () => {
-      const findings = await computeCurrentFindings();
+      const findings = await computeCurrentFindings({ annexB: false });
       assert.deepEqual(findings, []);
     })
   );
@@ -202,7 +202,7 @@ test("computeCurrentFindings includes open LinkSuggestion rows as internal-link 
       },
     });
 
-    const findings = await computeCurrentFindings();
+    const findings = await computeCurrentFindings({ annexB: false });
     const linkFindings = findings.filter((f) => f.source === "internalLinking");
     assert.equal(linkFindings.length, 1);
   });
@@ -336,7 +336,7 @@ test("computeCurrentFindings includes cannibalization findings computed from rec
       data: { date: today, page: "/blog/b", query: "misma query", clicks: 1, impressions: 10, ctr: 0.1, position: 12 },
     });
 
-    const findings = await computeCurrentFindings();
+    const findings = await computeCurrentFindings({ annexB: false });
     const contentFindings = findings.filter((f) => f.findingType === "content-cannibalization");
     assert.equal(contentFindings.length, 1);
   });
@@ -354,7 +354,7 @@ test("computeCurrentFindings includes a content-low-ctr finding for a page ranki
       data: { date: today, page: "/blog/low-ctr-page", query: "q", clicks: 0, impressions: 25, ctr: 0, position: 5 },
     });
 
-    const findings = await computeCurrentFindings();
+    const findings = await computeCurrentFindings({ annexB: false });
     const lowCtrFindings = findings.filter((f) => f.findingType === "content-low-ctr" && f.sourceRefId === "/blog/low-ctr-page");
     assert.equal(lowCtrFindings.length, 1);
   });
@@ -371,7 +371,7 @@ test("computeCurrentFindings includes a content-high-impression-low-position fin
       data: { date: today, page: "/blog/buried-page", query: "q", clicks: 0, impressions: 80, ctr: 0, position: 30 },
     });
 
-    const findings = await computeCurrentFindings();
+    const findings = await computeCurrentFindings({ annexB: false });
     const buried = findings.filter(
       (f) => f.findingType === "content-high-impression-low-position" && f.sourceRefId === "/blog/buried-page"
     );
