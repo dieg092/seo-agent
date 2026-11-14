@@ -241,10 +241,10 @@ test("measureAppliedChanges reports newly-graduated findingTypes and does not re
     );
 
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 30, impressions: 100, ctr: 0.1, position: 5 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad", query: "q", clicks: 30, impressions: 100, ctr: 0.1, position: 5 },
     });
 
     const result = await measureAppliedChanges({ alert: async () => {} });
@@ -429,10 +429,10 @@ test("measureAppliedChanges alerts on newly-graduated findingTypes", async () =>
       change.id
     );
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 30, impressions: 100, ctr: 0.1, position: 5 },
     });
     await prisma.searchConsoleSnapshot.create({
-      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 10, impressions: 100, ctr: 0.1, position: 5 },
+      data: { date: new Date(mergedAt.getTime() + 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/grad-alert", query: "q", clicks: 30, impressions: 100, ctr: 0.1, position: 5 },
     });
 
     let alertCount = 0;
@@ -484,5 +484,47 @@ test("measureAppliedChanges does not throw when alert dispatch fails (best-effor
     assert.equal(result.measured, 1);
 
     await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/alert-fail" } });
+  });
+});
+
+test("measureAppliedChanges records an inconclusive outcome but does not count it toward graduation", async () => {
+  await withEmptyTables(async () => {
+    await resetCheapTables();
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/inc" } });
+    await prisma.graduationRecord.create({
+      data: { findingType: "robots-blocks-all", consecutiveGood: 9, autoMergeEligible: false },
+    });
+
+    const mergedAt = daysAgo(15);
+    const change = await prisma.appliedChange.create({
+      data: {
+        opportunityStableKey: `test-${Math.random()}`,
+        findingType: "robots-blocks-all",
+        prUrl: "https://github.com/x/y/pull/9",
+        prNumber: 9,
+        status: "merged",
+      },
+    });
+    await prisma.$executeRawUnsafe(
+      `UPDATE "seo_agent"."AppliedChange" SET "updatedAt" = $1 WHERE "id" = $2`,
+      mergedAt,
+      change.id
+    );
+    // 3 clics de base: por debajo del mínimo, así que es inconcluso.
+    await prisma.searchConsoleSnapshot.create({
+      data: { date: new Date(mergedAt.getTime() - 5 * 24 * 60 * 60 * 1000), page: "https://measure-test.example/inc", query: "q", clicks: 3, impressions: 30, ctr: 0.1, position: 5 },
+    });
+
+    const result = await measureAppliedChanges({ alert: async () => {} });
+
+    assert.equal(result.measured, 1);
+    assert.deepEqual(result.graduated, []);
+    const measurement = await prisma.impactMeasurement.findUnique({ where: { appliedChangeId: change.id } });
+    assert.equal(measurement?.outcome, "inconclusive");
+    const record = await prisma.graduationRecord.findUnique({ where: { findingType: "robots-blocks-all" } });
+    assert.equal(record?.consecutiveGood, 9);
+    assert.equal(record?.autoMergeEligible, false);
+
+    await prisma.searchConsoleSnapshot.deleteMany({ where: { page: "https://measure-test.example/inc" } });
   });
 });

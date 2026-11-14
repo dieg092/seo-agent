@@ -86,6 +86,11 @@ export async function measureAppliedChanges(deps: {
     });
     measured += 1;
 
+    // Inconcluso (pocos clics de base) no es un resultado limpio: no suma
+    // para graduarse. Antes contaba como bueno y internal-link-suggestion se
+    // graduó en nov-2026 con 2 positivos y 190 inconclusos.
+    if (outcome === "inconclusive") continue;
+
     const record = await prisma.graduationRecord.findUnique({ where: { findingType: change.findingType } });
 
     if (outcome === "negative") {
@@ -164,7 +169,7 @@ export async function measureAppliedChanges(deps: {
         await dispatchAlert(
           "graduated",
           `Graduación conseguida: ${change.findingType}`,
-          `${change.findingType} ha completado 10 instancias consecutivas sin impacto negativo. A partir de ahora, los PRs de este tipo se auto-mergean sin esperar revisión.`
+          `${change.findingType} ha completado 10 mediciones positivas consecutivas (sin contar las inconclusas). A partir de ahora, los PRs de este tipo se auto-mergean sin esperar revisión.`
         );
       }
     }
