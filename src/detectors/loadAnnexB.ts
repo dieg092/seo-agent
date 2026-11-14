@@ -14,6 +14,7 @@ import {
   extractSegmentFindings,
   extractVisibilityFindings,
 } from "./annexB";
+import { extractStrategyFindings } from "../strategy/keywords";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** GSC tarda unos 3 días en cerrar un día (§15.2). */
@@ -97,6 +98,21 @@ export async function computeAnnexBFindings(now: Date = new Date()): Promise<Fin
     select: { date: true, channel: true, registros: true, bodasPublicadas: true, pagos: true },
   });
   findings.push(...extractFunnelFindings(funnel, now));
+
+  // Fase 5: clústeres de la última reconstrucción mensual (scripts/build-keywords.ts).
+  const clusters = await prisma.topicCluster.findMany({});
+  if (clusters.length > 0) {
+    const kws = await prisma.keywordCandidate.findMany({ select: { query: true, clusterId: true, impressions90d: true } });
+    const queriesOf = new Map<string, string[]>();
+    for (const k of [...kws].sort((a, b) => b.impressions90d - a.impressions90d)) {
+      if (k.clusterId) queriesOf.set(k.clusterId, [...(queriesOf.get(k.clusterId) ?? []), k.query]);
+    }
+    findings.push(
+      ...extractStrategyFindings(
+        clusters.map((c) => ({ ...c, intent: c.intent as "transactional", queries: queriesOf.get(c.id) ?? [] })),
+      ),
+    );
+  }
 
   return findings;
 }

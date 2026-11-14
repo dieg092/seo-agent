@@ -41,6 +41,7 @@ export const ALL_FINDING_SOURCES: FindingSource[] = [
   "visibility",
   "dataQuality",
   "funnel",
+  "strategy",
 ];
 
 function aggregateClicksByPage(rows: { page: string; clicks: number }[]): { page: string; clicks: number }[] {

@@ -11,13 +11,21 @@ jobs:
     # (ia/** de Órbita) no puede leerlos aunque cambie este workflow.
     environment: produccion
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DIRECT_URL: ${{ secrets.DIRECT_URL }}
       SITE_BASE_URL: ${{ vars.SITE_BASE_URL }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      CLOUDFLARE_WORKER_AI_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKER_AI_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_WORKER_AI_API_TOKEN_2: ${{ secrets.CLOUDFLARE_WORKER_AI_API_TOKEN_2 }}
+      CLOUDFLARE_ACCOUNT_ID_2: ${{ secrets.CLOUDFLARE_ACCOUNT_ID_2 }}
+      CLOUDFLARE_WORKER_AI_API_TOKEN_3: ${{ secrets.CLOUDFLARE_WORKER_AI_API_TOKEN_3 }}
+      CLOUDFLARE_ACCOUNT_ID_3: ${{ secrets.CLOUDFLARE_ACCOUNT_ID_3 }}
+      CLOUDFLARE_WORKER_AI_API_TOKEN_4: ${{ secrets.CLOUDFLARE_WORKER_AI_API_TOKEN_4 }}
+      CLOUDFLARE_ACCOUNT_ID_4: ${{ secrets.CLOUDFLARE_ACCOUNT_ID_4 }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v6
@@ -31,9 +39,13 @@ jobs:
       - run: pnpm db:generate
       - id: detect-site-architecture
         run: pnpm detect:site-architecture
+      # Fase 5: palabras clave y clústeres (§16.1-16.2); los hallazgos salen en la priorización diaria.
+      - id: build-keywords
+        run: pnpm keywords:build
+        continue-on-error: true
       - name: Report workflow health
         if: always()
-        run: pnpm exec tsx scripts/report-workflow-health.ts "monthly-site-architecture" "${{ steps.detect-site-architecture.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: pnpm exec tsx scripts/report-workflow-health.ts "monthly-site-architecture" "${{ steps.detect-site-architecture.outcome }},${{ steps.build-keywords.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: Build Telegram message
         id: telegram-message

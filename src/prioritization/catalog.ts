@@ -77,6 +77,9 @@ const CATALOG: Record<FindingType, CatalogEntry> = {
   "data-quality-gap": { severity: "high", confidence: "observed", autonomy: "A3", lane: "technical", operation: "manual", indexationRisk: false },
   "collector-failing": { severity: "high", confidence: "observed", autonomy: "A3", lane: "technical", operation: "manual", indexationRisk: false },
   "funnel-drop": { severity: "high", confidence: "derived", autonomy: "A3", lane: "strategy", operation: "manual", indexationRisk: false },
+  // Fase 5 (src/strategy/keywords.ts): propuestas, nunca código directo.
+  "commercial-page-missing": { severity: "high", confidence: "derived", autonomy: "A2", lane: "strategy", operation: null, indexationRisk: false },
+  "topic-cluster-gap": { severity: "medium", confidence: "derived", autonomy: "A2", lane: "content", operation: null, indexationRisk: false },
 };
 
 export function getCatalogEntry(findingType: FindingType): CatalogEntry {

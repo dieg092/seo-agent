@@ -508,3 +508,42 @@ model DeployEvent {
   @@index([deployedAt])
   @@schema("seo_agent")
 }
+
+// Fase 5 (§16.1-16.2): consultas de GSC (no-marca, 90 días) clasificadas por
+// intención y agrupadas en clústeres con embeddings bge-m3. Las reconstruye
+// scripts/build-keywords.ts cada mes; el embedding se guarda para no pedirlo otra vez.
+model KeywordCandidate {
+  id               String   @id @default(uuid())
+  query            String   @unique
+  // transactional | commercial | informational | comparison | image
+  intent           String
+  impressions90d   Int
+  clicks90d        Int
+  avgPosition      Float
+  bestPage         String?
+  bestPagePosition Float?
+  // low | medium | high (fuente: impresiones de GSC en 90 días)
+  demand           String
+  clusterId        String?
+  embedding        Float[]  @default([])
+  updatedAt        DateTime @updatedAt
+
+  @@index([clusterId])
+  @@schema("seo_agent")
+}
+
+model TopicCluster {
+  id               String   @id @default(uuid())
+  label            String
+  // intención dominante (por impresiones) de sus consultas
+  intent           String
+  mainPage         String?
+  mainPagePosition Float?
+  hasProductPage   Boolean
+  queryCount       Int
+  impressions90d   Int
+  clicks90d        Int
+  updatedAt        DateTime @updatedAt
+
+  @@schema("seo_agent")
+}

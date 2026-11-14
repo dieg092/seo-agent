@@ -57,6 +57,8 @@ const HEURISTICS: Record<FindingType, Heuristic> = {
   "data-quality-gap": { impactScore: 6, effortScore: 2 },
   "collector-failing": { impactScore: 7, effortScore: 2 },
   "funnel-drop": { impactScore: 8, effortScore: 5 },
+  "commercial-page-missing": { impactScore: 8, effortScore: 7 },
+  "topic-cluster-gap": { impactScore: 6, effortScore: 6 },
 };
 
 export function getHeuristic(findingType: FindingType): Heuristic {

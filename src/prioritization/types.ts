@@ -12,7 +12,8 @@ export type FindingSource =
   | "crawl"
   | "visibility"
   | "dataQuality"
-  | "funnel";
+  | "funnel"
+  | "strategy";
 
 export type FindingType =
   | "sitemap-malformed"
@@ -63,7 +64,9 @@ export type FindingType =
   | "image-opportunity"
   | "data-quality-gap"
   | "collector-failing"
-  | "funnel-drop";
+  | "funnel-drop"
+  | "commercial-page-missing"
+  | "topic-cluster-gap";
 
 export interface Finding {
   source: FindingSource;
