@@ -251,6 +251,24 @@ function isNoindex(row: CrawlRow): boolean {
   return /noindex/i.test(row.metaRobots ?? "") || /noindex/i.test(row.xRobotsTag ?? "");
 }
 
+/**
+ * noindex puesto a propósito en páginas con intent `product`: el editor
+ * (`/tool`, decisión SEO 2026-11-14), las demos con datos ficticios y
+ * cualquier variante con query (su canónica es otra URL).
+ */
+export const INTENTIONAL_NOINDEX: RegExp[] = [/^\/tool\/?$/, /^\/plantillas\/[^/]+\/demo\/?$/];
+
+function isIntentionalNoindex(row: CrawlRow): boolean {
+  try {
+    const u = new URL(row.url);
+    if (u.search) return true;
+    if (row.canonical && normalizeUrl(row.canonical) !== normalizeUrl(row.url)) return true;
+    return INTENTIONAL_NOINDEX.some((re) => re.test(u.pathname));
+  } catch {
+    return false;
+  }
+}
+
 export function extractCrawlFindings(rows: CrawlRow[]): Finding[] {
   const findings: Finding[] = [];
   const byUrl = new Map(rows.map((r) => [normalizeUrl(r.url), r]));
@@ -331,7 +349,7 @@ export function extractCrawlFindings(rows: CrawlRow[]): Finding[] {
       }
     }
 
-    if (row.status === 200 && isNoindex(row) && intentOfPage(url) === "product") {
+    if (row.status === 200 && isNoindex(row) && intentOfPage(url) === "product" && !isIntentionalNoindex(row)) {
       findings.push({
         source: "crawl",
         findingType: "noindex-commercial",

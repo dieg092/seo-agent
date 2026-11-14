@@ -171,6 +171,16 @@ test("crawl: noindex en página comercial y páginas profundas", () => {
   assert.deepEqual(types(extractCrawlFindings(rows)), ["deep-page", "noindex-commercial"]);
 });
 
+test("noindex-commercial ignora el editor, las demos y las variantes con query", () => {
+  const rows = [
+    crawl("/", { internalLinks: [`${SITE}/tool`, `${SITE}/plantillas/x/demo`, `${SITE}/tool?templateId=x`] }),
+    crawl("/tool", { metaRobots: "noindex, follow" }),
+    crawl("/plantillas/x/demo", { metaRobots: "noindex, follow" }),
+    crawl("/tool?templateId=x", { metaRobots: "noindex, follow", canonical: `${SITE}/tool` }),
+  ];
+  assert.deepEqual(types(extractCrawlFindings(rows)), []);
+});
+
 test("visibility-declining con base ≥ 100 y caída de más del 30%", () => {
   const prior = [{ page: "/a", type: "web", clicks: 5, impressions: 200 }, { page: "/b", type: "web", clicks: 1, impressions: 50 }];
   const recent = [{ page: "/a", type: "web", clicks: 2, impressions: 100 }, { page: "/b", type: "web", clicks: 0, impressions: 0 }];
