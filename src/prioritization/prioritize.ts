@@ -173,7 +173,7 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 /** Estados en los que una evaluación sin la condición puede cambiar algo (§6). */
 const ABSENCE_STATES: OpportunityState[] = ["detected", "open", "verifying"];
 
-function lifecycleOf(row: OpportunityRow): Lifecycle {
+export function lifecycleOf(row: OpportunityRow): Lifecycle {
   return {
     // Un valor desconocido (no debería haberlo) se trata como open, el estado de antes.
     state: isOpportunityState(row.state) ? row.state : "open",
@@ -187,7 +187,7 @@ function lifecycleOf(row: OpportunityRow): Lifecycle {
   };
 }
 
-function lifecycleData(lc: Lifecycle) {
+export function lifecycleData(lc: Lifecycle) {
   return {
     state: lc.state,
     stateChangedAt: lc.stateChangedAt,

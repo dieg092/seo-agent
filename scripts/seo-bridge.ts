@@ -1,0 +1,36 @@
+// scripts/seo-bridge.ts
+// Puente seo-agent → Órbita (fase 3, solo propuestas). Lo lanza el LaunchAgent
+// com.miwebdeboda.seo-bridge. `--dry-run` enseña qué haría sin escribir nada.
+import { prisma } from "../src/db";
+import { runBridge } from "../src/bridge/runBridge";
+import { recordAlert } from "../src/alerts/recordAlert";
+
+async function main(): Promise<number> {
+  const dryRun = process.argv.includes("--dry-run");
+  try {
+    const r = await runBridge({ dryRun });
+    console.log(
+      `${new Date().toISOString()} puente${dryRun ? " (simulación)" : ""}: ${r.reconciled} reconciliadas, ${r.closed} cerradas, ` +
+        `${r.expired} caducadas, ${r.created} creadas, ${r.adopted} adoptadas, ${r.rejected} rechazadas`,
+    );
+    if (dryRun) for (const p of r.planned) console.log(`  crearía: ${p}`);
+    return 0;
+  } catch (error) {
+    console.error("seo-bridge failed:", error);
+    try {
+      await prisma.workflowHeartbeat.upsert({
+        where: { workflowName: "seo-bridge" },
+        create: { workflowName: "seo-bridge", lastStatus: "failed" },
+        update: { lastRunAt: new Date(), lastStatus: "failed" },
+      });
+      await recordAlert({ type: "seo-bridge-failed", subject: "El puente SEO con Órbita ha fallado", body: String(error).slice(0, 1000) });
+    } catch {
+      // sin BD no hay dónde avisar; queda el registro del LaunchAgent
+    }
+    return 1;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main().then((code) => process.exit(code));

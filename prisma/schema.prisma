@@ -449,3 +449,33 @@ model WorkflowHeartbeat {
 
   @@schema("seo_agent")
 }
+
+// Fase 3 (anexo C.5): enlace entre un hallazgo y su tarea de Órbita. El puente
+// (scripts/seo-bridge.ts) lo crea al proponer la tarea y lo cierra cuando la
+// tarea termina, se cancela o caduca. Una Opportunity tiene como mucho un
+// enlace abierto (closedAt null).
+model SeoTaskLink {
+  id            String    @id @default(uuid())
+  opportunityId String
+  stableKey     String
+  orbitaTaskId  String    @unique
+  findingType   String
+  operation     String?
+  page          String?
+  lane          String
+  autonomy      String
+  contract      Json
+  // último estado leído de Órbita: todo, in_progress, blocked, done, cancelled o missing
+  taskStatus    String    @default("todo")
+  createdAt     DateTime  @default(now())
+  lastSyncedAt  DateTime  @default(now())
+  expiresAt     DateTime
+  closedAt      DateTime?
+  // done, cancelled, expired, resolved o missing
+  closeReason   String?
+
+  @@index([stableKey])
+  @@index([closedAt])
+  @@index([createdAt])
+  @@schema("seo_agent")
+}

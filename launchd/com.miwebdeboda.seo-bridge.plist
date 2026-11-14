@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.miwebdeboda.seo-bridge</string>
+  <key>WorkingDirectory</key><string>/Users/diego/Projects/production/miwebdeboda/seo-agent</string>
+  <key>ProgramArguments</key>
+  <array><string>/Users/diego/Projects/production/miwebdeboda/seo-agent/node_modules/.bin/tsx</string><string>scripts/seo-bridge.ts</string></array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string><key>HOME</key><string>/Users/diego</string></dict>
+  <key>StartInterval</key><integer>1800</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/diego/Library/Logs/seo-bridge.log</string>
+  <key>StandardErrorPath</key><string>/Users/diego/Library/Logs/seo-bridge.log</string>
+</dict>
+</plist>
