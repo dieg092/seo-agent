@@ -49,6 +49,9 @@ jobs:
       - id: crawl-weekly
         run: pnpm crawl:weekly
         continue-on-error: true
+      - id: verify-backlinks
+        run: pnpm backlinks:verify
+        continue-on-error: true
       - id: collect-funnel
         if: env.APP_FUNNEL_DATABASE_URL != ''
         run: pnpm collect:funnel
@@ -103,4 +106,4 @@ jobs:
 
       - name: Report workflow health
         if: always()
-        run: pnpm exec tsx scripts/report-workflow-health.ts "weekly-embeddings-and-briefing" "${{ steps.generate-embeddings.outcome }},${{ steps.compute-link-suggestions.outcome }},${{ steps.crawl-weekly.outcome }},${{ steps.collect-funnel.outcome }},${{ steps.prioritize.outcome }},${{ steps.generate-briefing.outcome }},${{ steps.weekly-report.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: pnpm exec tsx scripts/report-workflow-health.ts "weekly-embeddings-and-briefing" "${{ steps.generate-embeddings.outcome }},${{ steps.compute-link-suggestions.outcome }},${{ steps.crawl-weekly.outcome }},${{ steps.verify-backlinks.outcome }},${{ steps.collect-funnel.outcome }},${{ steps.prioritize.outcome }},${{ steps.generate-briefing.outcome }},${{ steps.weekly-report.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
