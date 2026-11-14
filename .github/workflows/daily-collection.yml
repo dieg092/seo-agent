@@ -77,11 +77,15 @@ jobs:
         continue-on-error: true
       - id: prioritize
         run: pnpm prioritize
+      # Freno automático (§14): salta solo, se rearma a mano con pnpm seo:switch rearm.
+      - id: evaluate-brake
+        run: pnpm brake:evaluate
+        continue-on-error: true
       - id: apply-tier1
         run: pnpm apply:tier1
       - name: Report workflow health
         if: always()
-        run: pnpm exec tsx scripts/report-workflow-health.ts "daily-collection" "${{ steps.collect-gsc.outcome }},${{ steps.collect-gsc-full.outcome }},${{ steps.collect-ga4.outcome }},${{ steps.collect-url-inspection.outcome }},${{ steps.audit-sitemap.outcome }},${{ steps.audit-production.outcome }},${{ steps.audit-robots.outcome }},${{ steps.audit-structured-data.outcome }},${{ steps.audit-performance.outcome }},${{ steps.prioritize.outcome }},${{ steps.apply-tier1.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: pnpm exec tsx scripts/report-workflow-health.ts "daily-collection" "${{ steps.collect-gsc.outcome }},${{ steps.collect-gsc-full.outcome }},${{ steps.collect-ga4.outcome }},${{ steps.collect-url-inspection.outcome }},${{ steps.audit-sitemap.outcome }},${{ steps.audit-production.outcome }},${{ steps.audit-robots.outcome }},${{ steps.audit-structured-data.outcome }},${{ steps.audit-performance.outcome }},${{ steps.prioritize.outcome }},${{ steps.evaluate-brake.outcome }},${{ steps.apply-tier1.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       # Uses job.status (not individual step outcomes) so a run is reported
       # even if it dies before "Report workflow health" — e.g. pnpm install

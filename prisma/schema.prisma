@@ -479,3 +479,32 @@ model SeoTaskLink {
   @@index([createdAt])
   @@schema("seo_agent")
 }
+
+// Fase 4 (§14): interruptor general, pausa por carril y freno automático. Fila
+// única (id "global"). Cada decisión queda en Alert; sin tabla de historial.
+model SeoControl {
+  id           String    @id @default("global")
+  // on | off
+  masterSwitch String    @default("on")
+  pausedLanes  String[]  @default([])
+  // off | tripped
+  brakeState   String    @default("off")
+  brakeReason  String?
+  trippedAt    DateTime?
+  trippedBy    String?
+  updatedAt    DateTime  @updatedAt
+
+  @@schema("seo_agent")
+}
+
+// Fase 4 (§13): un despliegue de producción de wedding-invite-2 y los commits
+// seo(...) de todo el rango desplegado. Lo escribe la CI de main (rol seo_ci).
+model DeployEvent {
+  commitSha    String   @id
+  deployedAt   DateTime @default(now())
+  runUrl       String?
+  seoChangeIds String[] @default([])
+
+  @@index([deployedAt])
+  @@schema("seo_agent")
+}

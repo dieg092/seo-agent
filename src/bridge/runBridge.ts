@@ -15,6 +15,9 @@ import { dismissalValue, type PriorityFactors } from "../prioritization/priority
 import { buildContract, renderDescription, renderPrompt, taskTitle, validateContract, type SeoTaskContract } from "./contract";
 import { expiryReason, planCreations, reconcile, type TaskStatus } from "./plan";
 import { orbitaCli, type OrbitaClient } from "./orbitaCli";
+import { mayCreate } from "../brake/brake";
+import { readControl } from "../brake/control";
+import { effectiveOperation } from "./contract";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 export const BRIDGE_LABELS = ["seo", "seo-agent"];
@@ -105,7 +108,10 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
     where: { status: "open", state: "open" },
     select: { id: true, stableKey: true, findingType: true, page: true, operation: true, autonomy: true, lane: true, priorityScore: true, state: true, status: true },
   });
-  const plan = planCreations(candidates, stillOpen, recent, now);
+  // Freno e interruptor (§14): se leen en el momento; sin poder leerlos, solo lo urgente.
+  const control = await readControl();
+  const allowed = candidates.filter((c) => mayCreate(control, c.lane, effectiveOperation(c)));
+  const plan = planCreations(allowed, stillOpen, recent, now);
   result.planned = plan.map((c) => `${c.lane} ${c.findingType} ${c.priorityScore.toFixed(1)}`);
   if (dry) return result;
 
