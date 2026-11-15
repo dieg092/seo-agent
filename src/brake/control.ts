@@ -13,7 +13,10 @@ const GSC_LAG_DAYS = 3;
 /** Control actual, o null si no se puede leer (quien lo use debe cerrar lo SEO). */
 export async function readControl(): Promise<ControlState | null> {
   try {
-    const row = await prisma.seoControl.upsert({ where: { id: ID }, create: { id: ID }, update: {} });
+    // Primero solo lectura: el rol seo_ci del despliegue no puede escribir SeoControl.
+    const row =
+      (await prisma.seoControl.findUnique({ where: { id: ID } })) ??
+      (await prisma.seoControl.upsert({ where: { id: ID }, create: { id: ID }, update: {} }));
     return { masterSwitch: row.masterSwitch, pausedLanes: row.pausedLanes, brakeState: row.brakeState };
   } catch (error) {
     console.error("No se pudo leer SeoControl:", error);
