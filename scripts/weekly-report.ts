@@ -53,8 +53,30 @@ export async function loadReportInput(now: Date = new Date()): Promise<ReportInp
     _sum: { impressions: true },
   });
 
+  // Bing agrega por semana: se cogen las semanas que empiezan en cada ventana.
+  const bingSum = (from: Date, to: Date) =>
+    prisma.bingQueryStat.aggregate({ where: { date: { gte: from, lt: to } }, _sum: { clicks: true, impressions: true } });
+  const [bingLast, bingPrior] = await Promise.all([bingSum(ago(28), now), bingSum(ago(56), ago(28))]);
+  const bingTop = await prisma.bingQueryStat.groupBy({
+    by: ["query"],
+    where: { date: { gte: ago(28) }, isBrand: false, NOT: { query: { contains: "<privada:" } } },
+    _sum: { impressions: true, clicks: true },
+    orderBy: { _sum: { impressions: "desc" } },
+    take: 5,
+  });
+  const hasBing = (await prisma.bingQueryStat.count()) > 0;
+
   return {
     generatedAt: now,
+    bing: hasBing
+      ? {
+          clicks28: bingLast._sum.clicks ?? 0,
+          impressions28: bingLast._sum.impressions ?? 0,
+          clicksPrior28: bingPrior._sum.clicks ?? 0,
+          impressionsPrior28: bingPrior._sum.impressions ?? 0,
+          topQueries: bingTop.map((q) => ({ query: q.query, clicks: q._sum.clicks ?? 0, impressions: q._sum.impressions ?? 0 })),
+        }
+      : null,
     funnel: {
       last7: await funnelWeek(ago(GSC_LAG_DAYS + 7), end),
       prior7: await funnelWeek(ago(GSC_LAG_DAYS + 14), ago(GSC_LAG_DAYS + 7)),

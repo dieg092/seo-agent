@@ -19,6 +19,8 @@ jobs:
       SEO_PRIVATE_URL_KEY: ${{ secrets.SEO_PRIVATE_URL_KEY }}
       # Rol de solo lectura app_funnel_reader (B3). Mientras falte, el paso del embudo se salta.
       APP_FUNNEL_DATABASE_URL: ${{ secrets.APP_FUNNEL_DATABASE_URL }}
+      # Bing Webmaster (fase 6). Mientras falte, el paso de Bing se salta.
+      BING_WEBMASTER_API_KEY: ${{ secrets.BING_WEBMASTER_API_KEY }}
       CLOUDFLARE_WORKER_AI_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKER_AI_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_WORKER_AI_API_TOKEN_2: ${{ secrets.CLOUDFLARE_WORKER_AI_API_TOKEN_2 }}
@@ -55,6 +57,10 @@ jobs:
       - id: collect-funnel
         if: env.APP_FUNNEL_DATABASE_URL != ''
         run: pnpm collect:funnel
+        continue-on-error: true
+      - id: collect-bing
+        if: env.BING_WEBMASTER_API_KEY != ''
+        run: pnpm collect:bing
         continue-on-error: true
       - id: prioritize
         run: pnpm prioritize
@@ -106,4 +112,4 @@ jobs:
 
       - name: Report workflow health
         if: always()
-        run: pnpm exec tsx scripts/report-workflow-health.ts "weekly-embeddings-and-briefing" "${{ steps.generate-embeddings.outcome }},${{ steps.compute-link-suggestions.outcome }},${{ steps.crawl-weekly.outcome }},${{ steps.verify-backlinks.outcome }},${{ steps.collect-funnel.outcome }},${{ steps.prioritize.outcome }},${{ steps.generate-briefing.outcome }},${{ steps.weekly-report.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: pnpm exec tsx scripts/report-workflow-health.ts "weekly-embeddings-and-briefing" "${{ steps.generate-embeddings.outcome }},${{ steps.compute-link-suggestions.outcome }},${{ steps.crawl-weekly.outcome }},${{ steps.verify-backlinks.outcome }},${{ steps.collect-funnel.outcome }},${{ steps.collect-bing.outcome }},${{ steps.prioritize.outcome }},${{ steps.generate-briefing.outcome }},${{ steps.weekly-report.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

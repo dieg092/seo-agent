@@ -60,3 +60,12 @@ test("el resumen de Telegram escapa HTML y avisa de procesos que fallan", () => 
   assert.ok(t.includes("Fallan: weekly-sync"));
   assert.ok(t.includes("Indexadas 90/120"));
 });
+
+test("la sección de Bing sale solo con datos y compara con los 28 días anteriores", () => {
+  assert.ok(!buildWeeklyReport(input()).includes("## Bing"));
+  const md = buildWeeklyReport(
+    input({ bing: { clicks28: 4, impressions28: 300, clicksPrior28: 2, impressionsPrior28: 150, topQueries: [{ query: "web de boda", clicks: 1, impressions: 40 }] } }),
+  );
+  assert.match(md, /## Bing\n\n28 días: 4 clics \(\+100%\) y 300 impresiones \(\+100%\)\./);
+  assert.match(md, /«web de boda» 40/);
+});

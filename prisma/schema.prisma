@@ -575,3 +575,56 @@ model BacklinkOpportunity {
   @@index([status])
   @@schema("seo_agent")
 }
+
+// Fase 6 (§10.6): Bing Webmaster. Bing agrega por semana (Date = inicio del
+// periodo). Las URLs privadas se guardan redactadas, como en GSC.
+model BingQueryStat {
+  id                    String   @id @default(uuid())
+  date                  DateTime @db.Date
+  query                 String
+  isBrand               Boolean  @default(false)
+  impressions           Int
+  clicks                Int
+  avgImpressionPosition Float
+  avgClickPosition      Float?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([date, query])
+  @@index([date])
+  @@schema("seo_agent")
+}
+
+model BingPageStat {
+  id                    String   @id @default(uuid())
+  date                  DateTime @db.Date
+  page                  String
+  impressions           Int
+  clicks                Int
+  avgImpressionPosition Float
+  avgClickPosition      Float?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([date, page])
+  @@index([date])
+  @@schema("seo_agent")
+}
+
+model BingCrawlStat {
+  date               DateTime @id @db.Date
+  crawledPages       Int
+  inIndex            Int
+  inLinks            Int
+  code2xx            Int
+  code301            Int
+  code302            Int
+  code4xx            Int
+  code5xx            Int
+  blockedByRobotsTxt Int
+  crawlErrors        Int
+  allOtherCodes      Int
+  updatedAt          DateTime @updatedAt
+
+  @@schema("seo_agent")
+}

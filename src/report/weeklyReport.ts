@@ -23,6 +23,8 @@ export interface ReportInput {
   measurements: { outcome: string; count: number }[];
   heartbeats: { workflowName: string; lastStatus: string; lastRunAt: Date }[];
   discoverImpressions28d: number;
+  /** Bing Webmaster (fase 6), últimos 28 días frente a los 28 anteriores; null si aún no hay datos. */
+  bing?: { clicks28: number; impressions28: number; clicksPrior28: number; impressionsPrior28: number; topQueries: { query: string; clicks: number; impressions: number }[] } | null;
 }
 
 const DISCOVER_THRESHOLD = 500;
@@ -104,6 +106,16 @@ export function buildWeeklyReport(input: ReportInput): string {
     "",
   );
 
+  if (input.bing) {
+    const b = input.bing;
+    lines.push("## Bing", "");
+    lines.push(
+      `28 días: ${b.clicks28} clics (${delta(b.clicks28, b.clicksPrior28)}) y ${b.impressions28} impresiones (${delta(b.impressions28, b.impressionsPrior28)}).`,
+    );
+    if (b.topQueries.length) lines.push(`Consultas no-marca con más impresiones: ${b.topQueries.map((q) => `«${q.query}» ${q.impressions}`).join(", ")}.`);
+    lines.push("");
+  }
+
   lines.push("## Procesos", "");
   for (const h of [...input.heartbeats].sort((a, b) => a.workflowName.localeCompare(b.workflowName))) {
     lines.push(`- ${h.workflowName}: ${h.lastStatus} (${h.lastRunAt.toISOString().slice(0, 16).replace("T", " ")} UTC)`);
@@ -125,6 +137,7 @@ export function buildTelegramSummary(input: ReportInput): string {
     `📊 <b>Informe SEO semanal</b>`,
     `Clics ${f.last7.clicks} (${delta(f.last7.clicks, f.prior7.clicks)}) · registros ${f.last7.registros} · publicadas ${f.last7.bodasPublicadas} · pagos ${f.last7.pagos}`,
     `Indexadas ${input.indexation.indexed}/${input.indexation.expected}`,
+    ...(input.bing ? [`Bing 28 días: ${input.bing.clicks28} clics · ${input.bing.impressions28} impresiones`] : []),
     `Abiertas: ${input.byState.open ?? 0}${urgent ? ` · urgentes en el top: ${urgent}` : ""}`,
   ];
   if (input.topOpportunities[0]) parts.push(`1.º ${escapeHtml(input.topOpportunities[0].title)}`);
