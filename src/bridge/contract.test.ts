@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildContract, pathAllowed, renderPrompt, taskTitle, validateContract, type ContractOpportunity } from "./contract";
+import { buildContract, pathAllowed, promoteToAuto, renderPrompt, taskTitle, validateContract, type ContractOpportunity } from "./contract";
 import { expiryReason, handledElsewhere, laneUsage, planCreations, reconcile, type CandidateOpportunity } from "./plan";
 
 const NOW = new Date("2026-11-14T12:00:00Z");
@@ -135,4 +135,17 @@ test("expiryReason: solo tareas sin empezar, por caducidad o hallazgo resuelto",
   assert.equal(expiryReason(link, { status: "resolved", state: "queued" }, NOW), "resolved");
   assert.equal(expiryReason({ ...link, expiresAt: new Date(NOW.getTime() - 1) }, { status: "open", state: "queued" }, NOW), "expired");
   assert.equal(expiryReason({ ...link, taskStatus: "in_progress" }, { status: "resolved", state: "resolved" }, NOW), null);
+});
+
+test("promoción a fusión automática: solo A1 del catálogo automático y una al día", () => {
+  const c = buildContract(opp({ severity: "medium" }), { now: NOW, changeId: "c" });
+  const auto = promoteToAuto(c, 0);
+  assert.equal(auto?.publishPolicy, "auto-merge-if-green");
+  assert.deepEqual(validateContract(auto!, { allowAutoMerge: true }), []);
+  assert.ok(validateContract(auto!).length > 0, "sin permiso expreso no valida");
+  assert.equal(promoteToAuto(c, 1), null, "cupo diario agotado");
+  assert.equal(promoteToAuto(buildContract(opp(), { now: NOW, changeId: "c" }), 0)?.publishPolicy, "auto-merge-if-green", "el riesgo no cuenta");
+  assert.equal(promoteToAuto(buildContract(opp({ severity: "low", autonomy: "A2" }), { now: NOW, changeId: "c" }), 0), null, "A2");
+  assert.equal(promoteToAuto(buildContract(opp({ severity: "low", operation: "internal-links-batch" }), { now: NOW, changeId: "c" }), 0), null, "fuera del catálogo automático");
+  assert.equal(promoteToAuto({ ...c, tainted: true }, 0), null, "contaminado");
 });

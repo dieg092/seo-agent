@@ -192,6 +192,26 @@ export function pathAllowed(file: string, allowedPaths: string[]): boolean {
   return allowedPaths.some((g) => globToRegExp(g).test(file));
 }
 
+/** Operaciones A1 que el puente puede fusionar solo (fase 4). Las demás siguen como propuesta. */
+export const AUTO_OPERATIONS: ReadonlySet<string> = new Set(["meta-title-description", "broken-internal-link-fix"]);
+/** Como mucho una tarea automática nueva cada 24 h: si algo sale mal, se ve antes de la siguiente. */
+export const AUTO_DAILY_CAP = 1;
+
+/**
+ * Contrato con fusión automática si cumple todo: A1, operación del catálogo
+ * automático, sin contaminar, con URLs y sin superar el cupo diario. Si no,
+ * null. El riesgo (gravedad del hallazgo) no cuenta: mide impacto, y el
+ * peligro ya lo acotan el alcance, la revisión IA y la reversión automática.
+ */
+export const isAutoCandidate = (c: Pick<SeoTaskContract, "autonomy" | "operation">) => c.autonomy === "A1" && AUTO_OPERATIONS.has(c.operation);
+
+export function promoteToAuto(c: SeoTaskContract, autoCreatedLast24h: number): SeoTaskContract | null {
+  if (!isAutoCandidate(c)) return null;
+  if (c.tainted || c.publishPolicy !== "pr-only" || c.urls.length === 0) return null;
+  if (autoCreatedLast24h >= AUTO_DAILY_CAP) return null;
+  return { ...c, publishPolicy: "auto-merge-if-green" };
+}
+
 /**
  * Validación del contrato (anexo C.2). Devuelve los errores; vacío = válido.
  * Comprueba que alcance y límites son los del catálogo, que `tainted` no va

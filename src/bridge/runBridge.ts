@@ -12,7 +12,7 @@ import { recordAlert } from "../alerts/recordAlert";
 import { InvalidTransitionError, transition, type LifecycleEvent } from "../opportunity/lifecycle";
 import { lifecycleData, lifecycleOf } from "../prioritization/prioritize";
 import { dismissalValue, type PriorityFactors } from "../prioritization/priority";
-import { buildContract, renderDescription, renderPrompt, taskTitle, validateContract, type SeoTaskContract } from "./contract";
+import { AUTO_DAILY_CAP, buildContract, isAutoCandidate, promoteToAuto, renderDescription, renderPrompt, taskTitle, validateContract, type SeoTaskContract } from "./contract";
 import { expiryReason, planCreations, reconcile, type TaskStatus } from "./plan";
 import { orbitaCli, type OrbitaClient } from "./orbitaCli";
 import { AUTO_FAILURE_STREAK, failureStreak, mayCreate } from "../brake/brake";
@@ -20,6 +20,7 @@ import { readControl, trip } from "../brake/control";
 import { effectiveOperation } from "./contract";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 export const BRIDGE_LABELS = ["seo", "seo-agent"];
 
 export interface BridgeResult {
@@ -118,6 +119,28 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
     }
   }
 
+  // 2c. Fase 4: las propuestas A1 de operaciones automáticas que nadie ha empezado se sustituyen por
+  // tareas automáticas, una por cupo libre: se cancela la de más prioridad y el hallazgo vuelve a open.
+  const ctl0 = await readControl();
+  const autoOn = ctl0?.masterSwitch === "on" && ctl0.brakeState === "off";
+  let autoLast24h = await prisma.seoTaskLink.count({
+    where: { createdAt: { gte: new Date(now.getTime() - DAY_MS) }, contract: { path: ["publishPolicy"], equals: "auto-merge-if-green" } },
+  });
+  if (autoOn && !dry && autoLast24h < AUTO_DAILY_CAP) {
+    const proposals = open.filter((l) => {
+      const c = l.contract as unknown as SeoTaskContract | null;
+      return l.closedAt === null && l.taskStatus === "todo" && !!c && isAutoCandidate(c) && c.publishPolicy === "pr-only";
+    });
+    const opps = await prisma.opportunity.findMany({ where: { id: { in: proposals.map((l) => l.opportunityId) }, status: "open", state: "queued" }, select: { id: true, priorityScore: true } });
+    const best = opps.sort((a, b) => b.priorityScore - a.priorityScore)[0];
+    const link = best && proposals.find((l) => l.opportunityId === best.id);
+    if (link && (await orbita.cancelIfTodo(link.orbitaTaskId, "Sustituida por seo-agent: pasa a tarea automática (A1)."))) {
+      await prisma.seoTaskLink.update({ where: { id: link.id }, data: { taskStatus: "cancelled", closedAt: now, closeReason: "superseded", lastSyncedAt: now } });
+      await prisma.opportunity.update({ where: { id: best.id }, data: { state: "open", stateChangedAt: now } });
+      link.closedAt = now;
+    }
+  }
+
   // 3. Creación.
   const stillOpen = await prisma.seoTaskLink.findMany({ where: { closedAt: null } });
   const recent = await prisma.seoTaskLink.findMany({ where: { createdAt: { gte: new Date(now.getTime() - WEEK_MS) } } });
@@ -137,11 +160,17 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
     for (const c of plan) {
       const opp = await prisma.opportunity.findUnique({ where: { id: c.id } });
       if (!opp) continue;
-      const contract: SeoTaskContract = buildContract(
+      const built: SeoTaskContract = buildContract(
         { id: opp.id, stableKey: opp.stableKey, findingType: opp.findingType, title: opp.title, detail: opp.detail, page: opp.page, operation: opp.operation, autonomy: opp.autonomy, lane: opp.lane, severity: opp.severity },
         { now, changeId: randomUUID() },
       );
-      const errors = validateContract(contract);
+      // Freno e interruptor ya filtrados arriba; el worker y la CI los vuelven a mirar antes de fusionar.
+      const promoted = autoOn && control?.masterSwitch === "on" && control.brakeState === "off" ? promoteToAuto(built, autoLast24h) : null;
+      // Sin cupo hoy, un candidato automático espera a mañana en vez de volver a proponerse.
+      if (!promoted && autoOn && isAutoCandidate(built) && !built.tainted && autoLast24h >= AUTO_DAILY_CAP) continue;
+      const contract = promoted ?? built;
+      const auto = promoted !== null;
+      const errors = validateContract(contract, { allowAutoMerge: auto });
       if (errors.length > 0) {
         result.rejected += 1;
         await recordAlert({
@@ -152,7 +181,7 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
         continue;
       }
       const metadataFile = join(dir, `${opp.stableKey}.json`);
-      writeFileSync(metadataFile, JSON.stringify({ seo: { ...contract, stage: "proposal" } }));
+      writeFileSync(metadataFile, JSON.stringify({ seo: { ...contract, stage: auto ? "run" : "proposal" } }));
       const manual = contract.operation === "manual";
       const { id, created } = await orbita.add({
         title: taskTitle(contract),
@@ -162,7 +191,9 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
         metadataFile,
         dedupeKey: opp.stableKey,
         aiPrompt: manual ? null : renderPrompt(contract),
+        auto,
       });
+      if (auto) autoLast24h += 1;
       await prisma.seoTaskLink.upsert({
         where: { orbitaTaskId: id },
         create: {
@@ -176,6 +207,7 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
           autonomy: contract.autonomy,
           contract: contract as unknown as object,
           expiresAt: new Date(contract.expiresAt),
+          createdAt: now,
         },
         update: { closedAt: null, closeReason: null, lastSyncedAt: now },
       });

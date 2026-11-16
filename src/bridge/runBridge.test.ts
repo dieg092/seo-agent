@@ -1,5 +1,6 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { prisma } from "../db";
 import { runBridge } from "./runBridge";
 import type { OrbitaClient, OrbitaTask } from "./orbitaCli";
@@ -8,7 +9,7 @@ const NOW = new Date("2026-11-14T12:00:00Z");
 const PREFIX = "bridge-test-";
 
 class FakeOrbita implements OrbitaClient {
-  tasks = new Map<string, OrbitaTask & { dedupe: string; prompt: string | null; labels: string[] }>();
+  tasks = new Map<string, OrbitaTask & { dedupe: string; prompt: string | null; labels: string[]; auto: boolean; meta: string }>();
   comments: string[] = [];
   next = 1;
   async get(id: string) {
@@ -19,7 +20,8 @@ class FakeOrbita implements OrbitaClient {
       if (t.dedupe === input.dedupeKey && ["todo", "in_progress", "blocked"].includes(t.status)) return { id: t.id, created: false };
     }
     const id = `00000000-0000-0000-0000-${String(this.next++).padStart(12, "0")}`;
-    this.tasks.set(id, { id, status: "todo", labels: input.labels, blocked_reason: null, dedupe: input.dedupeKey, prompt: input.aiPrompt });
+    const meta = readFileSync(input.metadataFile, "utf8");
+    this.tasks.set(id, { id, status: "todo", labels: input.labels, blocked_reason: null, dedupe: input.dedupeKey, prompt: input.aiPrompt, auto: !!input.auto, meta });
     return { id, created: true };
   }
   async comment(_id: string, text: string) {
@@ -53,7 +55,8 @@ async function seed(n: number, over: Record<string, unknown> = {}) {
       status: "open",
       state: "open",
       page: `https://miwebdeboda.com/blog/a/p${n}`,
-      operation: "meta-title-description",
+      // A1 que no está en el catálogo automático: sigue siendo propuesta.
+      operation: "image-alt",
       autonomy: "A1",
       lane: "content",
       severity: "high",
@@ -140,4 +143,43 @@ test("dry-run no escribe nada", async () => {
   assert.equal(r.planned.length, 1);
   assert.equal(orbita.tasks.size, 0);
   assert.equal(await prisma.seoTaskLink.count({}), 0);
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+const meta = (n: number) => ({ operation: "meta-title-description", stableKey: key(n), sourceRefId: `${PREFIX}${n}` });
+
+test("fase 4: una tarea automática al día; el resto de candidatos automáticos espera sin proponerse", async () => {
+  for (let i = 1; i <= 3; i++) await seed(i, meta(i));
+  const orbita = new FakeOrbita();
+  const r = await runBridge({ orbita, now: NOW });
+  assert.equal(r.created, 1);
+  const [t] = [...orbita.tasks.values()];
+  assert.equal(t.auto, true);
+  const m = JSON.parse(t.meta).seo;
+  assert.equal(m.publishPolicy, "auto-merge-if-green");
+  assert.equal(m.stage, "run");
+  assert.equal(await prisma.opportunity.count({ where: { sourceRefId: { startsWith: PREFIX }, state: "open" } }), 2);
+  // Mismo día: nada. Al día siguiente: la siguiente.
+  assert.equal((await runBridge({ orbita, now: new Date(NOW.getTime() + 60_000) })).created, 0);
+  assert.equal((await runBridge({ orbita, now: new Date(NOW.getTime() + DAY + 60_000) })).created, 1);
+});
+
+test("fase 4: una propuesta A1 automática sin empezar se sustituye por tarea automática", async () => {
+  const opp = await seed(1, { ...meta(1), state: "queued" });
+  const orbita = new FakeOrbita();
+  const old = await orbita.add({ title: "x", description: "x", priority: "high", labels: ["seo"], metadataFile: __filename, dedupeKey: "otra", aiPrompt: null });
+  await prisma.seoTaskLink.create({
+    data: {
+      opportunityId: opp.id, stableKey: opp.stableKey, orbitaTaskId: old.id, findingType: opp.findingType, operation: "meta-title-description",
+      page: opp.page, lane: "content", autonomy: "A1", contract: { autonomy: "A1", operation: "meta-title-description", publishPolicy: "pr-only" },
+      expiresAt: new Date(NOW.getTime() + 30 * DAY), createdAt: new Date(NOW.getTime() - 2 * DAY),
+    },
+  });
+  const r = await runBridge({ orbita, now: NOW });
+  assert.equal(orbita.tasks.get(old.id)?.status, "cancelled");
+  assert.equal((await prisma.seoTaskLink.findFirst({ where: { orbitaTaskId: old.id } }))?.closeReason, "superseded");
+  assert.equal(r.created, 1);
+  const created = [...orbita.tasks.values()].filter((t) => t.id !== old.id);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].auto, true);
 });
