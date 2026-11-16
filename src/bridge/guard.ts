@@ -66,16 +66,18 @@ export function guardDecision(input: GuardInput): GuardDecision {
   }
   const operation = link.operation ?? "";
 
+  // El alcance se comprueba siempre; el freno no lo retiene: una tarea que ya
+  // ha trabajado termina y abre su PR, y el freno la para antes de fusionar (C.6).
+  if (stage === "scope") {
+    const r = checkScope(operation, input.diff ?? []);
+    return r.ok ? { code: ALLOW, reason: `alcance OK (${operation})` } : { code: BLOCK, reason: r.errors.join("; ") };
+  }
+
   // Cerrado ante el error: sin poder leer el control, nada SEO avanza.
   if (!control) return { code: HOLD, reason: "no se puede leer SeoControl" };
   if (control.masterSwitch !== "on") return { code: HOLD, reason: "interruptor SEO apagado" };
   if (control.brakeState === "tripped") return { code: HOLD, reason: "freno SEO activo" };
   if (control.pausedLanes.includes(link.lane)) return { code: HOLD, reason: `carril ${link.lane} en pausa` };
-
-  if (stage === "scope") {
-    const r = checkScope(operation, input.diff ?? []);
-    return r.ok ? { code: ALLOW, reason: `alcance OK (${operation})` } : { code: BLOCK, reason: r.errors.join("; ") };
-  }
 
   if (stage === "premerge") {
     if (!input.selfIntact) return { code: HOLD, reason: "seo-agent tiene cambios locales o no está en origin/main" };

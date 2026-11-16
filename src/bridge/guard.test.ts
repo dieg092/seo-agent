@@ -46,6 +46,8 @@ test("scope: el diff tiene que caber en la operación", () => {
   assert.equal(run({ stage: "scope", diff: pr.files }), ALLOW);
   assert.equal(run({ stage: "scope", diff: [] }), BLOCK);
   assert.equal(run({ stage: "scope", diff: [{ path: "package.json", added: 1, deleted: 0 }] }), BLOCK);
+  // con el freno, la tarea que ya trabajó abre su PR igualmente: la para el premerge
+  assert.equal(run({ stage: "scope", diff: pr.files, control: { ...on, brakeState: "tripped" } }), ALLOW);
 });
 
 test("premerge: PR abierto contra main, título, etiquetas y ficheros", () => {
