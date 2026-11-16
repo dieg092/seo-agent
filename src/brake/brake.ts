@@ -74,6 +74,19 @@ export function mayCreate(control: ControlState | null, lane: string, operation:
   return true;
 }
 
+/** Tareas automáticas seguidas que acaban bloqueadas y saltan el freno (anexo C). */
+export const AUTO_FAILURE_STREAK = 3;
+
+/** Cuántas de las tareas A1 terminadas más recientes (de la más nueva a la más vieja) están bloqueadas seguidas. */
+export function failureStreak(statusesNewestFirst: string[]): number {
+  let n = 0;
+  for (const s of statusesNewestFirst) {
+    if (s !== "blocked") break;
+    n += 1;
+  }
+  return n;
+}
+
 // ─── seo-brake-gate (CI de wedding-invite-2) ────────────────────────────────
 
 /** Marcador de los commits SEO: asunto `seo(<id8>): …`. */

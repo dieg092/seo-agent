@@ -15,8 +15,8 @@ import { dismissalValue, type PriorityFactors } from "../prioritization/priority
 import { buildContract, renderDescription, renderPrompt, taskTitle, validateContract, type SeoTaskContract } from "./contract";
 import { expiryReason, planCreations, reconcile, type TaskStatus } from "./plan";
 import { orbitaCli, type OrbitaClient } from "./orbitaCli";
-import { mayCreate } from "../brake/brake";
-import { readControl } from "../brake/control";
+import { AUTO_FAILURE_STREAK, failureStreak, mayCreate } from "../brake/brake";
+import { readControl, trip } from "../brake/control";
 import { effectiveOperation } from "./contract";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -99,6 +99,23 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
       await prisma.opportunity.updateMany({ where: { id: link.opportunityId, state: "queued" }, data: { state: "open", stateChangedAt: now } });
     }
     result.expired += 1;
+  }
+
+  // 2b. Tres tareas automáticas (A1) seguidas bloqueadas saltan el freno. Solo cuentan las creadas después del
+  // último cambio del control, para que un rearme no vuelva a saltar por las mismas.
+  if (!dry) {
+    const ctl = await prisma.seoControl.findUnique({ where: { id: "global" } });
+    if (ctl && ctl.brakeState !== "tripped") {
+      const lastA1 = await prisma.seoTaskLink.findMany({
+        where: { autonomy: "A1", taskStatus: { in: ["blocked", "done"] }, createdAt: { gt: ctl.updatedAt } },
+        orderBy: { createdAt: "desc" },
+        take: AUTO_FAILURE_STREAK,
+        select: { taskStatus: true, orbitaTaskId: true },
+      });
+      if (failureStreak(lastA1.map((l) => l.taskStatus)) >= AUTO_FAILURE_STREAK) {
+        await trip([`${AUTO_FAILURE_STREAK} tareas SEO automáticas seguidas bloqueadas: ${lastA1.map((l) => l.orbitaTaskId.slice(0, 8)).join(", ")}`], "seo-bridge");
+      }
+    }
   }
 
   // 3. Creación.

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateBrake, gateDecision, isExactInverse, mayCreate, seoChangeIds, type BrakeInputs } from "./brake";
+import { evaluateBrake, failureStreak, gateDecision, isExactInverse, mayCreate, seoChangeIds, type BrakeInputs } from "./brake";
 
 const calm: BrakeInputs = {
   indexedNow: 160,
@@ -85,4 +85,11 @@ test("revert-change: el diff tiene que ser el inverso exacto", () => {
   assert.equal(isExactInverse(COMMIT, REVERT.replace("Precios viejos", "Precios otros")), false);
   assert.equal(isExactInverse(COMMIT, COMMIT), false);
   assert.equal(isExactInverse("", ""), false);
+});
+
+test("racha de tareas automáticas bloqueadas", () => {
+  assert.equal(failureStreak([]), 0);
+  assert.equal(failureStreak(["blocked", "blocked", "blocked"]), 3);
+  assert.equal(failureStreak(["blocked", "done", "blocked"]), 1);
+  assert.equal(failureStreak(["done", "blocked", "blocked"]), 0);
 });
