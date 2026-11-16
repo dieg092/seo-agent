@@ -197,7 +197,7 @@ export function pathAllowed(file: string, allowedPaths: string[]): boolean {
  * Comprueba que alcance y límites son los del catálogo, que `tainted` no va
  * con A1 ni con fusión automática y que no lleva URLs privadas.
  */
-export function validateContract(c: SeoTaskContract): string[] {
+export function validateContract(c: SeoTaskContract, opts: { allowAutoMerge?: boolean } = {}): string[] {
   const errors: string[] = [];
   if (c.contractVersion !== CONTRACT_VERSION) errors.push("contractVersion");
   if (!/^[0-9a-f]{64}$/.test(c.findingStableKey)) errors.push("findingStableKey");
@@ -206,7 +206,8 @@ export function validateContract(c: SeoTaskContract): string[] {
   if (JSON.stringify(c.allowedPaths) !== JSON.stringify(scope.allowedPaths)) errors.push("allowedPaths fuera del catálogo");
   if (c.maxFilesChanged !== scope.maxFilesChanged || c.maxLinesChanged !== scope.maxLinesChanged) errors.push("límites fuera del catálogo");
   if (c.tainted && (c.autonomy === "A1" || c.publishPolicy === "auto-merge-if-green")) errors.push("tainted con A1 o fusión automática");
-  if (c.publishPolicy === "auto-merge-if-green") errors.push("fase 3: sin fusión automática");
+  // Fusión automática solo con A1 y donde se permite expresamente (canario; el puente, al activar A1).
+  if (c.publishPolicy === "auto-merge-if-green" && (!opts.allowAutoMerge || c.autonomy !== "A1")) errors.push("fusión automática no permitida");
   if (c.urls.some((u) => isPrivateUrl(u))) errors.push("URL privada");
   if (c.queries.length > 10) errors.push("más de 10 consultas");
   if (JSON.stringify(c).length > 20_000) errors.push("contrato demasiado grande");

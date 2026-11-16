@@ -52,6 +52,9 @@ test("validateContract rechaza alcances ampliados, fusión automática y URLs pr
   const c = buildContract(opp(), { now: NOW, changeId: "c1" });
   assert.ok(validateContract({ ...c, allowedPaths: ["**"] }).length > 0);
   assert.ok(validateContract({ ...c, publishPolicy: "auto-merge-if-green" }).length > 0);
+  // solo se permite expresamente y con A1
+  assert.deepEqual(validateContract({ ...c, autonomy: "A1", publishPolicy: "auto-merge-if-green" }, { allowAutoMerge: true }), []);
+  assert.ok(validateContract({ ...c, autonomy: "A2", publishPolicy: "auto-merge-if-green" }, { allowAutoMerge: true }).length > 0);
   assert.ok(validateContract({ ...c, urls: ["https://miwebdeboda.com/admin/boda"] }).length > 0);
   assert.ok(validateContract({ ...c, findingStableKey: "x" }).length > 0);
 });

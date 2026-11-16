@@ -25,6 +25,8 @@ export interface OrbitaClient {
     metadataFile: string;
     dedupeKey: string;
     aiPrompt: string | null;
+    /** Tarea SEO automática (A1): entra con seo-auto en vez de «propuesta». */
+    auto?: boolean;
   }): Promise<{ id: string; created: boolean }>;
   comment(id: string, text: string): Promise<void>;
   cancelIfTodo(id: string, reason: string): Promise<boolean>;
@@ -71,6 +73,7 @@ export const orbitaCli: OrbitaClient = {
       "--dedupe-key", input.dedupeKey,
       "--json",
       ...(input.aiPrompt ? ["--ia", "--prompt", input.aiPrompt] : []),
+      ...(input.auto ? ["--auto"] : []),
     ];
     const r = await run(args);
     if (r.code !== 0) throw new Error(`orbita add: ${(r.stderr || r.stdout).slice(0, 300)}`);
