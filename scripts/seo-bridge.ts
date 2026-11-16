@@ -4,6 +4,7 @@
 import { prisma } from "../src/db";
 import { runBridge } from "../src/bridge/runBridge";
 import { recordAlert } from "../src/alerts/recordAlert";
+import { detectRegressions, runReverts } from "../src/revert/runRevert";
 
 async function main(): Promise<number> {
   const dryRun = process.argv.includes("--dry-run");
@@ -14,6 +15,17 @@ async function main(): Promise<number> {
         `${r.expired} caducadas, ${r.created} creadas, ${r.adopted} adoptadas, ${r.rejected} rechazadas`,
     );
     if (dryRun) for (const p of r.planned) console.log(`  crearía: ${p}`);
+    if (!dryRun) {
+      // Sonda de los cambios SEO desplegados y reversiones deterministas (§15.3): fallan aparte del puente.
+      try {
+        const opened = await detectRegressions();
+        const notes = await runReverts();
+        if (opened || notes.length) console.log(`  regresiones: ${opened} nuevas; ${notes.join("; ") || "sin reversiones"}`);
+      } catch (error) {
+        console.error("reversiones SEO:", error);
+        await recordAlert({ type: "seo-revert-failed", subject: "La sonda o la reversión SEO ha fallado", body: String(error).slice(0, 1000) }).catch(() => {});
+      }
+    }
     return 0;
   } catch (error) {
     console.error("seo-bridge failed:", error);
