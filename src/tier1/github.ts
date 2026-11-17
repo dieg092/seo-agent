@@ -1,5 +1,20 @@
 // src/tier1/github.ts
+import { execFileSync } from "node:child_process";
 import { getEnv } from "../env";
+
+/**
+ * Token de la API: el PAT si existe (tests y entornos antiguos); si no, el
+ * inicio de sesión de gh del Mac. Ya no hay PAT en GitHub Actions: estos
+ * trabajos corren en el Mac (scripts/seo-github-jobs.ts).
+ */
+let cachedToken: string | null = null;
+export function githubToken(): string {
+  const pat = process.env.WEDDING_INVITE_2_PAT;
+  if (pat) return pat;
+  cachedToken ??= execFileSync("gh", ["auth", "token"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 30_000 }).trim();
+  if (!cachedToken) throw new Error("sin token de GitHub: ni WEDDING_INVITE_2_PAT ni gh auth");
+  return cachedToken;
+}
 
 function apiBase(): string {
   const owner = getEnv("GITHUB_REPO_OWNER");
@@ -9,7 +24,7 @@ function apiBase(): string {
 
 function authHeaders(): Record<string, string> {
   return {
-    Authorization: `Bearer ${getEnv("WEDDING_INVITE_2_PAT")}`,
+    Authorization: `Bearer ${githubToken()}`,
     "X-GitHub-Api-Version": "2022-11-28",
     Accept: "application/vnd.github+json",
   };

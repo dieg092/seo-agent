@@ -5,6 +5,7 @@ import { prisma } from "../src/db";
 import { runBridge } from "../src/bridge/runBridge";
 import { recordAlert } from "../src/alerts/recordAlert";
 import { detectRegressions, runReverts } from "../src/revert/runRevert";
+import { runGithubJobs } from "../src/githubJobs/runGithubJobs";
 
 async function main(): Promise<number> {
   const dryRun = process.argv.includes("--dry-run");
@@ -24,6 +25,14 @@ async function main(): Promise<number> {
       } catch (error) {
         console.error("reversiones SEO:", error);
         await recordAlert({ type: "seo-revert-failed", subject: "La sonda o la reversión SEO ha fallado", body: String(error).slice(0, 1000) }).catch(() => {});
+      }
+      // Trabajos con escritura en GitHub (Tier 1, sincronización semanal): con el gh del Mac, sin PAT.
+      try {
+        const notes = await runGithubJobs();
+        if (notes.length) console.log(`  github: ${notes.join("; ")}`);
+      } catch (error) {
+        console.error("trabajos de GitHub:", error);
+        await recordAlert({ type: "seo-github-jobs-failed", subject: "Los trabajos SEO de GitHub han fallado", body: String(error).slice(0, 1000) }).catch(() => {});
       }
     }
     return 0;
