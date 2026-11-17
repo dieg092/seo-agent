@@ -628,3 +628,25 @@ model BingCrawlStat {
 
   @@schema("seo_agent")
 }
+
+// Fase 5 (§16.3): estructura de páginas públicas de los competidores. Solo
+// estructura (rutas, title, encabezados, tipos de schema), nunca el texto: no se
+// copia contenido. Es entrada contaminada: lo que sale de aquí nunca es A1.
+model CompetitorPage {
+  id          String   @id @default(uuid())
+  domain      String
+  url         String   @unique
+  path        String
+  status      Int
+  title       String?
+  h1          String?
+  headings    String[] @default([])
+  jsonLdTypes String[] @default([])
+  wordCount   Int      @default(0)
+  lang        String?
+  embedding   Float[]  @default([])
+  fetchedAt   DateTime @default(now())
+
+  @@index([domain, fetchedAt])
+  @@schema("seo_agent")
+}

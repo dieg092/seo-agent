@@ -62,6 +62,12 @@ jobs:
         if: env.BING_WEBMASTER_API_KEY != ''
         run: pnpm collect:bing
         continue-on-error: true
+      # Fase 5 (§16.3): estructura de los competidores comerciales, 1 petición cada 5 s
+      # y como mucho 50 páginas al mes por dominio; antes de prioritize.
+      - id: collect-competitors
+        run: pnpm collect:competitors
+        continue-on-error: true
+        timeout-minutes: 15
       - id: prioritize
         run: pnpm prioritize
       - id: generate-briefing
@@ -112,4 +118,4 @@ jobs:
 
       - name: Report workflow health
         if: always()
-        run: pnpm exec tsx scripts/report-workflow-health.ts "weekly-embeddings-and-briefing" "${{ steps.generate-embeddings.outcome }},${{ steps.compute-link-suggestions.outcome }},${{ steps.crawl-weekly.outcome }},${{ steps.verify-backlinks.outcome }},${{ steps.collect-funnel.outcome }},${{ steps.collect-bing.outcome }},${{ steps.prioritize.outcome }},${{ steps.generate-briefing.outcome }},${{ steps.weekly-report.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: pnpm exec tsx scripts/report-workflow-health.ts "weekly-embeddings-and-briefing" "${{ steps.generate-embeddings.outcome }},${{ steps.compute-link-suggestions.outcome }},${{ steps.crawl-weekly.outcome }},${{ steps.verify-backlinks.outcome }},${{ steps.collect-funnel.outcome }},${{ steps.collect-bing.outcome }},${{ steps.collect-competitors.outcome }},${{ steps.prioritize.outcome }},${{ steps.generate-briefing.outcome }},${{ steps.weekly-report.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

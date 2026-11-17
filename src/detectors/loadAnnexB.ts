@@ -15,6 +15,7 @@ import {
   extractVisibilityFindings,
 } from "./annexB";
 import { extractStrategyFindings } from "../strategy/keywords";
+import { extractCompetitorGaps } from "../competitors/gaps";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** GSC tarda unos 3 días en cerrar un día (§15.2). */
@@ -112,6 +113,25 @@ export async function computeAnnexBFindings(now: Date = new Date()): Promise<Fin
         clusters.map((c) => ({ ...c, intent: c.intent as "transactional", queries: queriesOf.get(c.id) ?? [] })),
       ),
     );
+  }
+
+  // Fase 5 (§16.3): temas de competidores sin cubrir. Lo nuestro: consultas de GSC y artículos.
+  const competitorPages = await prisma.competitorPage.findMany({
+    where: { fetchedAt: { gte: ago(180) }, status: 200 },
+    select: { domain: true, url: true, path: true, title: true, h1: true, embedding: true },
+  });
+  if (competitorPages.some((p) => p.embedding.length > 0)) {
+    const ours = (await prisma.keywordCandidate.findMany({ select: { embedding: true } })).map((k) => k.embedding).filter((e) => e.length > 0);
+    const articles = await prisma.$queryRaw<{ v: string }[]>`SELECT embedding::text AS v FROM "seo_agent"."ArticleEmbedding" WHERE embedding IS NOT NULL`;
+    for (const a of articles) {
+      try {
+        ours.push(JSON.parse(a.v) as number[]);
+      } catch {
+        // vector ilegible: se ignora
+      }
+    }
+    // Sin nada nuestro con que comparar, todo saldría como hueco: mejor no decir nada.
+    if (ours.length > 0) findings.push(...extractCompetitorGaps(competitorPages, ours));
   }
 
   return findings;

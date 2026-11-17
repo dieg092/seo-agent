@@ -166,7 +166,8 @@ export function buildContract(opp: ContractOpportunity, deps: { now: Date; chang
     maxLinesChanged: scope.maxLinesChanged,
     constraints: BASE_CONSTRAINTS,
     forbiddenSkills: ["find-skills", "programmatic-seo"],
-    tainted: false,
+    // Hallazgos que salen de páginas de terceros (competidores): nunca A1 ni fusión automática.
+    tainted: TAINTED_FINDINGS.has(opp.findingType),
     risk: opp.severity === "critical" || opp.severity === "high" ? "high" : opp.severity === "medium" ? "medium" : "low",
     tests: writes ? ["pnpm type-check", "pnpm seo:check"] : [],
     acceptance: [...scope.acceptance, ...(writes ? ["diff dentro de allowedPaths y de los límites"] : [])],
@@ -191,6 +192,9 @@ function globToRegExp(glob: string): RegExp {
 export function pathAllowed(file: string, allowedPaths: string[]): boolean {
   return allowedPaths.some((g) => globToRegExp(g).test(file));
 }
+
+/** Tipos de hallazgo hechos con contenido de terceros (§16.3). */
+export const TAINTED_FINDINGS: ReadonlySet<string> = new Set(["competitor-gap"]);
 
 /** Operaciones A1 que el puente puede fusionar solo (fase 4). Las demás siguen como propuesta. */
 export const AUTO_OPERATIONS: ReadonlySet<string> = new Set(["meta-title-description", "broken-internal-link-fix"]);
