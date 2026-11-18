@@ -597,7 +597,8 @@ export interface HeartbeatRow {
 export function extractCollectorFindings(rows: HeartbeatRow[], now: Date): Finding[] {
   const findings: Finding[] = [];
   for (const row of rows) {
-    const maxAgeDays = /weekly/.test(row.workflowName) ? 9 : /monthly/.test(row.workflowName) ? 35 : 2;
+    // bing-collector corre dentro del flujo semanal de los lunes.
+    const maxAgeDays = /weekly|bing-collector/.test(row.workflowName) ? 9 : /monthly/.test(row.workflowName) ? 35 : 2;
     const stale = now.getTime() - row.lastRunAt.getTime() > maxAgeDays * DAY_MS;
     const failing = !/^(success|ok)$/i.test(row.lastStatus);
     if (!stale && !failing) continue;
