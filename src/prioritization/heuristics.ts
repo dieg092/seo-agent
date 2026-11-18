@@ -60,7 +60,7 @@ const HEURISTICS: Record<FindingType, Heuristic> = {
   "commercial-page-missing": { impactScore: 8, effortScore: 7 },
   "topic-cluster-gap": { impactScore: 6, effortScore: 6 },
   "competitor-gap": { impactScore: 4, effortScore: 7 },
-  "editorial-low-score": { impactScore: 5, effortScore: 6 },
+  "editorial-low-score": { impactScore: 5, effortScore: 4 },
   "content-intent-mismatch": { impactScore: 6, effortScore: 6 },
   "content-seasonal": { impactScore: 5, effortScore: 5 },
 };
