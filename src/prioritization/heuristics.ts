@@ -61,6 +61,8 @@ const HEURISTICS: Record<FindingType, Heuristic> = {
   "topic-cluster-gap": { impactScore: 6, effortScore: 6 },
   "competitor-gap": { impactScore: 4, effortScore: 7 },
   "editorial-low-score": { impactScore: 5, effortScore: 6 },
+  "content-intent-mismatch": { impactScore: 6, effortScore: 6 },
+  "content-seasonal": { impactScore: 5, effortScore: 5 },
 };
 
 export function getHeuristic(findingType: FindingType): Heuristic {

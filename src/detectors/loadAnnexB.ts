@@ -17,6 +17,7 @@ import {
 import { extractStrategyFindings } from "../strategy/keywords";
 import { extractCompetitorGaps } from "../competitors/gaps";
 import { extractEditorialFindings, type LatestScore } from "../editorial/findings";
+import { extractIntentMismatchFindings, extractSeasonalFindings, SEASONAL_WINDOW_DAYS } from "../strategy/intentSignals";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** GSC tarda unos 3 días en cerrar un día (§15.2). */
@@ -133,6 +134,29 @@ export async function computeAnnexBFindings(now: Date = new Date()): Promise<Fin
     }
     // Sin nada nuestro con que comparar, todo saldría como hueco: mejor no decir nada.
     if (ours.length > 0) findings.push(...extractCompetitorGaps(competitorPages, ours));
+  }
+
+  // Fase 5 (§16.2): intención que no encaja (GSC + GA4 de 90 días) y estacionalidad propia.
+  const pages90 = await prisma.$queryRaw<{ page: string; impressions: number; clicks: number; position: number }[]>`
+    SELECT page, sum(impressions)::int AS impressions, sum(clicks)::int AS clicks,
+           (sum(coalesce(position, 0) * impressions) / nullif(sum(impressions), 0))::float AS position
+    FROM "seo_agent"."SearchConsolePageDaily" WHERE type = 'web' AND date >= ${ago(90)} GROUP BY page`;
+  const ga90 = await prisma.$queryRaw<{ page: string; sessions: number; engaged: number }[]>`
+    SELECT "landingPage" AS page, sum(sessions)::int AS sessions, sum("engagedSessions")::int AS engaged
+    FROM "seo_agent"."AnalyticsLandingDaily" WHERE channel = 'Organic Search' AND date >= ${ago(90)} GROUP BY "landingPage"`;
+  const gaBy = new Map(ga90.map((g) => [g.page, g]));
+  findings.push(
+    ...extractIntentMismatchFindings(
+      pages90.map((p) => ({ ...p, position: p.position ?? 0, sessions: gaBy.get(p.page)?.sessions ?? 0, engagedSessions: gaBy.get(p.page)?.engaged ?? 0 })),
+    ),
+  );
+  const earliest = (await prisma.searchConsoleSnapshot.aggregate({ _min: { date: true } }))._min.date;
+  if (earliest && now.getTime() - earliest.getTime() >= 395 * 86400_000) {
+    const from = new Date(now.getTime() - (730 - SEASONAL_WINDOW_DAYS) * 86400_000);
+    const to = new Date(now.getTime() - (365 - SEASONAL_WINDOW_DAYS) * 86400_000);
+    const rows = await prisma.$queryRaw<{ date: Date; query: string; page: string; impressions: number }[]>`
+      SELECT date, query, page, impressions FROM "seo_agent"."SearchConsoleSnapshot" WHERE date >= ${from} AND date < ${to} AND impressions > 0`;
+    findings.push(...extractSeasonalFindings(rows, earliest, now));
   }
 
   // Fase 5 (§16.4): artículos que la IA editorial bloquea, solo con la calibración en verde.

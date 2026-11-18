@@ -70,7 +70,9 @@ export type FindingType =
   | "commercial-page-missing"
   | "topic-cluster-gap"
   | "competitor-gap"
-  | "editorial-low-score";
+  | "editorial-low-score"
+  | "content-intent-mismatch"
+  | "content-seasonal";
 
 export interface Finding {
   source: FindingSource;
