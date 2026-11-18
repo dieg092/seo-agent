@@ -4,8 +4,8 @@
 // JSON forzada por esquema. Cada criterio cita su evidencia; lo que no se puede
 // verificar en el texto se topa a 6 (rubric.applyCaps).
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { CRITERIA, CRITERION_KEYS, RUBRIC_VERSION, applyCaps, weightedScore, type CriteriaScores } from "./rubric";
 import type { ArticleDoc } from "./article";
@@ -106,9 +106,11 @@ export const claudeRunner: Runner = ({ system, user, schema }) =>
       "--append-system-prompt", system,
       "--json-schema", JSON.stringify(schema),
     ];
-    const bin = process.env.CLAUDE_BIN ?? "claude";
+    // El LaunchAgent del puente no lleva ~/npm/bin en el PATH.
+    const npmBin = join(process.env.HOME ?? "", "npm", "bin", "claude");
+    const bin = process.env.CLAUDE_BIN ?? (existsSync(npmBin) ? npmBin : "claude");
     // Sin las variables de la BD ni de las cuentas: el evaluador no las necesita.
-    const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: process.env.HOME, USER: process.env.USER, TMPDIR: process.env.TMPDIR, LANG: "es_ES.UTF-8" };
+    const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: process.env.HOME, USER: process.env.USER ?? userInfo().username, TMPDIR: process.env.TMPDIR, LANG: "es_ES.UTF-8" };
     const p = spawn(bin, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
     let err = "";
