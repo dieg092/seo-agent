@@ -14,7 +14,8 @@ export type FindingSource =
   | "dataQuality"
   | "funnel"
   | "strategy"
-  | "competitors";
+  | "competitors"
+  | "editorial";
 
 export type FindingType =
   | "sitemap-malformed"
@@ -68,7 +69,8 @@ export type FindingType =
   | "funnel-drop"
   | "commercial-page-missing"
   | "topic-cluster-gap"
-  | "competitor-gap";
+  | "competitor-gap"
+  | "editorial-low-score";
 
 export interface Finding {
   source: FindingSource;

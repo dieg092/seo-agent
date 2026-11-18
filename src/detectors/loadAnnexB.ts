@@ -16,6 +16,7 @@ import {
 } from "./annexB";
 import { extractStrategyFindings } from "../strategy/keywords";
 import { extractCompetitorGaps } from "../competitors/gaps";
+import { extractEditorialFindings, type LatestScore } from "../editorial/findings";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** GSC tarda unos 3 días en cerrar un día (§15.2). */
@@ -132,6 +133,18 @@ export async function computeAnnexBFindings(now: Date = new Date()): Promise<Fin
     }
     // Sin nada nuestro con que comparar, todo saldría como hueco: mejor no decir nada.
     if (ours.length > 0) findings.push(...extractCompetitorGaps(competitorPages, ours));
+  }
+
+  // Fase 5 (§16.4): artículos que la IA editorial bloquea, solo con la calibración en verde.
+  const calibration = await prisma.editorialCalibration.findFirst({ orderBy: { createdAt: "desc" } });
+  if (calibration?.status === "ok") {
+    const latest = await prisma.editorialScore.findMany({
+      where: { kind: { in: ["routine", "calibration"] } },
+      orderBy: { createdAt: "desc" },
+      distinct: ["slug"],
+      select: { slug: true, url: true, contentHash: true, finalScore: true, decision: true, reason: true, criteria: true },
+    });
+    findings.push(...extractEditorialFindings(latest as unknown as LatestScore[]));
   }
 
   return findings;

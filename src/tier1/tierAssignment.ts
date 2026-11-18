@@ -54,6 +54,7 @@ const TIER: Record<FindingType, 1 | 2 | 3> = {
   "commercial-page-missing": 3,
   "topic-cluster-gap": 3,
   "competitor-gap": 3,
+  "editorial-low-score": 3,
 };
 
 export function getTier(findingType: FindingType): 1 | 2 | 3 {

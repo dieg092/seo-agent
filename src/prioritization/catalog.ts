@@ -73,6 +73,7 @@ const CATALOG: Record<FindingType, CatalogEntry> = {
   "deep-page": { severity: "low", confidence: "derived", autonomy: "A2", lane: "links", operation: null, indexationRisk: false },
   // Fase 5 (§16.3): sale de páginas de competidores, entrada contaminada: A2 y sin operación.
   "competitor-gap": { severity: "low", confidence: "heuristic", autonomy: "A2", lane: "strategy", operation: null, indexationRisk: false },
+  "editorial-low-score": { severity: "medium", confidence: "heuristic", autonomy: "A2", lane: "content", operation: null, indexationRisk: false },
   "visibility-declining": { severity: "medium", confidence: "derived", autonomy: "A1", lane: "content", operation: "investigation", indexationRisk: false },
   "segment-declining": { severity: "low", confidence: "derived", autonomy: "A1", lane: "content", operation: "investigation", indexationRisk: false },
   "image-opportunity": { severity: "low", confidence: "derived", autonomy: "A1", lane: "content", operation: "image-alt", indexationRisk: false },

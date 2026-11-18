@@ -650,3 +650,39 @@ model CompetitorPage {
   @@index([domain, fetchedAt])
   @@schema("seo_agent")
 }
+
+// Fase 5 (§16.4): nota editorial por artículo y versión del contenido. Guarda las dos
+// capas: la determinista (señales de fórmulas vacías) y la de IA con la evidencia
+// verificada de cada criterio. kind: routine | calibration | second (confirmación ≥ 9).
+model EditorialScore {
+  id            String   @id @default(uuid())
+  slug          String
+  url           String
+  contentHash   String
+  kind          String
+  rubricVersion String
+  model         String
+  score         Float
+  finalScore    Float
+  decision      String
+  reason        String
+  criteria      Json
+  deterministic Json
+  summary       String   @default("")
+  createdAt     DateTime @default(now())
+
+  @@index([slug, createdAt])
+  @@schema("seo_agent")
+}
+
+// Calibración mensual contra resultados de GSC (B5): referencias con su ancla y estado.
+model EditorialCalibration {
+  id         String   @id @default(uuid())
+  status     String
+  detail     String
+  references Json
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@schema("seo_agent")
+}

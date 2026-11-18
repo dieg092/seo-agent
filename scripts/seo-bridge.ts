@@ -6,6 +6,7 @@ import { runBridge } from "../src/bridge/runBridge";
 import { recordAlert } from "../src/alerts/recordAlert";
 import { detectRegressions, runReverts } from "../src/revert/runRevert";
 import { runGithubJobs } from "../src/githubJobs/runGithubJobs";
+import { runEditorial } from "../src/editorial/runEditorial";
 
 async function main(): Promise<number> {
   const dryRun = process.argv.includes("--dry-run");
@@ -33,6 +34,16 @@ async function main(): Promise<number> {
       } catch (error) {
         console.error("trabajos de GitHub:", error);
         await recordAlert({ type: "seo-github-jobs-failed", subject: "Los trabajos SEO de GitHub han fallado", body: String(error).slice(0, 1000) }).catch(() => {});
+      }
+      // IA editorial (§16.4): calibración con GSC y un artículo por pasada, con Claude sin herramientas.
+      try {
+        const notes = await runEditorial();
+        if (notes.length) console.log(`  ${notes.join("; ")}`);
+      } catch (error) {
+        console.error("IA editorial:", error);
+        // Corre cada media hora: un aviso al día como mucho.
+        const recent = await prisma.alert.count({ where: { type: "seo-editorial-failed", createdAt: { gte: new Date(Date.now() - 24 * 3600_000) } } }).catch(() => 1);
+        if (!recent) await recordAlert({ type: "seo-editorial-failed", subject: "La IA editorial ha fallado", body: String(error).slice(0, 1000) }).catch(() => {});
       }
     }
     return 0;
