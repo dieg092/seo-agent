@@ -83,6 +83,19 @@ export const OPERATION_SCOPES: Readonly<Record<string, OperationScope>> = {
     maxLinesChanged: 20,
     acceptance: ["solo salen URLs con 404/410 estable", "el sitemap no pierde más del 5% de URLs"],
   },
+  // Fase 5 (§16.4, B5): mejorar un artículo que la IA editorial bloquea. La guarda premerge
+  // exige que la IA editorial apruebe la versión de la rama y que mejore la de main.
+  "content-improve": {
+    allowedPaths: ["src/lib/blog/content/**", "src/lib/blog/posts.ts"],
+    maxFilesChanged: 2,
+    maxLinesChanged: 400,
+    acceptance: [
+      "solo cambia el texto del artículo del contrato (su fichero .ts en src/lib/blog/content; el .md de al lado no se toca) y, en src/lib/blog/posts.ts, su updatedAt a la fecha de hoy",
+      "corrige lo que dicen los criterios más flojos de la evidencia (weakest), sin cambiar el slug, el título ni la intención del artículo",
+      "sin cifras, precios ni datos nuevos que no se puedan justificar; nada de frases de relleno ni muletillas",
+      "la IA editorial aprueba la versión de la rama (nota ≥ 7 y al menos 0,5 por encima de la de main)",
+    ],
+  },
   "robots-restore-sitemap-directive": {
     allowedPaths: ["src/app/robots.ts"],
     maxFilesChanged: 1,
@@ -169,7 +182,7 @@ export function buildContract(opp: ContractOpportunity, deps: { now: Date; chang
     // Hallazgos que salen de páginas de terceros (competidores): nunca A1 ni fusión automática.
     tainted: TAINTED_FINDINGS.has(opp.findingType),
     risk: opp.severity === "critical" || opp.severity === "high" ? "high" : opp.severity === "medium" ? "medium" : "low",
-    tests: writes ? ["pnpm type-check", "pnpm seo:check"] : [],
+    tests: writes ? ["pnpm type-check", "pnpm seo:check", ...(operation === "content-improve" ? ["pnpm blog:lint"] : [])] : [],
     acceptance: [...scope.acceptance, ...(writes ? ["diff dentro de allowedPaths y de los límites"] : [])],
     // Fase 3: solo propuestas. Ninguna tarea se fusiona sola hasta activar A1 (fase 4).
     publishPolicy: writes ? "pr-only" : "none",
@@ -197,7 +210,7 @@ export function pathAllowed(file: string, allowedPaths: string[]): boolean {
 export const TAINTED_FINDINGS: ReadonlySet<string> = new Set(["competitor-gap"]);
 
 /** Operaciones A1 que el puente puede fusionar solo (fase 4). Las demás siguen como propuesta. */
-export const AUTO_OPERATIONS: ReadonlySet<string> = new Set(["meta-title-description", "broken-internal-link-fix"]);
+export const AUTO_OPERATIONS: ReadonlySet<string> = new Set(["meta-title-description", "broken-internal-link-fix", "content-improve"]);
 /** Como mucho una tarea automática nueva cada 24 h: si algo sale mal, se ve antes de la siguiente. */
 export const AUTO_DAILY_CAP = 1;
 

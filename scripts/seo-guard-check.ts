@@ -13,6 +13,9 @@ import { readControl } from "../src/brake/control";
 import { recordAlert } from "../src/alerts/recordAlert";
 import { BLOCK, HOLD, guardDecision, type GuardStage, type PullRequestInfo } from "../src/bridge/guard";
 import { parseNumstat, type DiffFile } from "../src/bridge/scopeCheck";
+import { editorialGate } from "../src/editorial/gate";
+import { claudeRunner } from "../src/editorial/evaluator";
+import { getEnv } from "../src/env";
 
 const SELF = join(__dirname, "..");
 const run = (cmd: string, args: string[], cwd?: string) =>
@@ -36,12 +39,13 @@ function selfIntact(): boolean {
 }
 
 /** El PR por la API de GitHub: título, etiquetas y ficheros (un renombrado cuenta como «origen => destino»). */
-function readPullRequest(url: string): PullRequestInfo | undefined {
+function readPullRequest(url: string): (PullRequestInfo & { repo: string; headSha: string }) | undefined {
   try {
     const m = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(url);
     if (!m) return undefined;
     const [, repo, num] = m;
-    const pr = JSON.parse(run("gh", ["pr", "view", url, "--json", "title,labels,state,baseRefName"])) as {
+    const pr = JSON.parse(run("gh", ["pr", "view", url, "--json", "title,labels,state,baseRefName,headRefOid"])) as {
+      headRefOid: string;
       title: string;
       labels: { name: string }[];
       state: string;
@@ -51,6 +55,8 @@ function readPullRequest(url: string): PullRequestInfo | undefined {
       run("gh", ["api", "--paginate", "--slurp", `repos/${repo}/pulls/${num}/files?per_page=100`]),
     ) as { filename: string; previous_filename?: string; additions: number; deletions: number; status: string }[][];
     return {
+      repo,
+      headSha: pr.headRefOid,
       title: pr.title,
       labels: pr.labels.map((l) => l.name),
       state: pr.state,
@@ -89,14 +95,28 @@ async function main(): Promise<number> {
       return BLOCK;
     }
   }
-  const d = guardDecision({
-    stage,
-    control,
-    link,
-    diff,
-    pr: stage === "premerge" ? readPullRequest(target!) : undefined,
-    selfIntact: stage === "premerge" ? selfIntact() : undefined,
-  });
+  const pr = stage === "premerge" ? readPullRequest(target!) : undefined;
+  let d = guardDecision({ stage, control, link, diff, pr, selfIntact: stage === "premerge" ? selfIntact() : undefined });
+  // Mejoras de artículos: además, la IA editorial tiene que aprobar la versión de la rama (B5).
+  if (d.code === 0 && stage === "premerge" && link?.operation === "content-improve" && pr) {
+    const urls = ((link.contract as { urls?: unknown } | null)?.urls ?? []) as string[];
+    d = await editorialGate({
+      files: pr.files.map((f) => f.path),
+      contractUrls: Array.isArray(urls) ? urls : [],
+      baseRef: "main",
+      headRef: pr.headSha,
+      siteBase: getEnv("SITE_BASE_URL").replace(/\/$/, ""),
+      readFile: async (path, ref) => {
+        try {
+          return run("gh", ["api", "-H", "Accept: application/vnd.github.raw", `repos/${pr.repo}/contents/${path}?ref=${ref}`]);
+        } catch {
+          return null;
+        }
+      },
+      runner: claudeRunner,
+      now: new Date(),
+    });
+  }
   console.log(d.reason);
   if (d.code === BLOCK && link) {
     try {
