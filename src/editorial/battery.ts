@@ -26,7 +26,7 @@ import { budgetedRunner } from "./budget";
 import { classifyModelError } from "./modelErrors";
 import { deterministicBlock, editorialConfigKey, pairedDecision, scoreVersion, type VersionScore } from "./paired";
 import { CRITERION_FLOOR, CRITERION_KEYS } from "./rubric";
-import { BASE_ARTICLE, BATTERY_CASES, BATTERY_MIN_RATE, BATTERY_SLUG, BATTERY_VERSION, type BatteryCase } from "./fixtures/validationCases";
+import { BASE_ARTICLE, BATTERY_FACTS, BATTERY_CASES, BATTERY_MIN_RATE, BATTERY_SLUG, BATTERY_VERSION, type BatteryCase } from "./fixtures/validationCases";
 
 export const BATTERY_MAX_AGE_DAYS = 30;
 export const MAX_QUALITY_ATTEMPTS = 3;
@@ -154,7 +154,7 @@ export async function stepBattery(runner: Runner, now: Date, siteBase: string, d
   const doneIds = new Set((await results()).map((r) => r.caseId));
   for (const c of BATTERY_CASES) {
     if (doneIds.has(c.id)) continue;
-    const blocked = deterministicBlock(BASE_ARTICLE, c.head, c.id);
+    const blocked = deterministicBlock(BASE_ARTICLE, c.head, c.id, BATTERY_FACTS);
     if (blocked) await record(c, true, blocked);
   }
 
@@ -211,7 +211,7 @@ export async function stepBattery(runner: Runner, now: Date, siteBase: string, d
     }
     for (const c of modelOrder(BATTERY_CASES)) {
       if ((await results()).some((r) => r.caseId === c.id)) continue;
-      const d = await pairedDecision({ url, label: c.id, baseMd: BASE_ARTICLE, headMd: c.head, siteBase, runner: persistent(runId, c.id, "head", model), base });
+      const d = await pairedDecision({ url, label: c.id, baseMd: BASE_ARTICLE, headMd: c.head, siteBase, runner: persistent(runId, c.id, "head", model), base, facts: BATTERY_FACTS });
       await record(c, !d.approve, d.reason);
       if (run.transientFails > 0) run = await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { transientFails: 0 } });
       if (earlyVerdict(await results(), BATTERY_CASES.length)) return finish();

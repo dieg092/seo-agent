@@ -13,6 +13,7 @@ import { extractArticleFromMarkdown } from "./article";
 import { detectHollow } from "./hollow";
 import { EVALUATOR_MODEL, SYSTEM_PROMPT, evaluateArticle, evaluationSchema, type Evaluation, type Runner } from "./evaluator";
 import { CLAIMS_VERSION, unsourcedNewFigures } from "./claims";
+import { admittingFact, type Fact } from "./evidence";
 import { APPROVE_MIN, CRITERION_FLOOR, CRITERION_KEYS, RUBRIC_VERSION, type CriterionKey } from "./rubric";
 
 export const GATE_VERSION = "gate-v3";
@@ -64,14 +65,14 @@ export interface PairedDecision {
 }
 
 /** Parte determinista de la decisión (sin llamadas): un motivo de bloqueo o null. */
-export function deterministicBlock(baseMd: string, headMd: string, label: string): string | null {
-  const unsourced = unsourcedNewFigures(baseMd, headMd);
+export function deterministicBlock(baseMd: string, headMd: string, label: string, facts: readonly Fact[] = []): string | null {
+  const unsourced = unsourcedNewFigures(baseMd, headMd, (p, f) => admittingFact(p, f, facts) !== null);
   if (unsourced.length === 0) return null;
-  return `bloquea: ${label} añade cifras que no estaban en main (${unsourced.slice(0, 3).map((u) => u.figure).join(", ")})`;
+  return `bloquea: ${label} añade cifras que no estaban en main ni en los datos admitidos, o sin citarlos como toca (${unsourced.slice(0, 3).map((u) => u.figure).join(", ")}) — qué falla: usa solo cifras de la lista de datos admitidos, en un párrafo sobre lo mismo y con su enlace o el nombre de su fuente`;
 }
 
-export async function pairedDecision(input: { url: string; label: string; baseMd: string; headMd: string; siteBase: string; runner: Runner; base?: VersionScore }): Promise<PairedDecision> {
-  const blocked = deterministicBlock(input.baseMd, input.headMd, input.label);
+export async function pairedDecision(input: { url: string; label: string; baseMd: string; headMd: string; siteBase: string; runner: Runner; base?: VersionScore; facts?: readonly Fact[] }): Promise<PairedDecision> {
+  const blocked = deterministicBlock(input.baseMd, input.headMd, input.label, input.facts ?? []);
   if (blocked) return { approve: false, reason: blocked, base: null, head: null, gain: null, evaluated: false };
   const common = { url: input.url, siteBase: input.siteBase, runner: input.runner };
   const base = input.base ?? (await scoreVersion({ ...common, md: input.baseMd }, "base"));

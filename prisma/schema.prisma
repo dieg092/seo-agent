@@ -816,3 +816,26 @@ model EditorialBudget {
 
   @@schema("seo_agent")
 }
+
+/// Evidencia admitida para las mejoras de artículos (src/editorial/evidence.ts).
+model EditorialFact {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  kind        String
+  forms       String[]
+  statement   String
+  context     String[]
+  contextMin  Int
+  cite        String[]
+  names       String[]
+  sourceName  String
+  sourceUrl   String?
+  sampleSize  Int?
+  active      Boolean  @default(true)
+  verifiedAt  DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active, verifiedAt])
+  @@schema("seo_agent")
+}

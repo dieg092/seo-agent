@@ -7,6 +7,7 @@ import { recordAlert } from "../src/alerts/recordAlert";
 import { detectRegressions, runReverts } from "../src/revert/runRevert";
 import { runGithubJobs } from "../src/githubJobs/runGithubJobs";
 import { runEditorial } from "../src/editorial/runEditorial";
+import { refreshEvidence } from "../src/editorial/evidenceStore";
 import { advanceReverts, measureChanges, reconcileChanges } from "../src/graduation/changeLedger";
 import { advancePilots, pilotReport } from "../src/editorial/pilot";
 
@@ -46,6 +47,13 @@ async function main(): Promise<number> {
       } catch (error) {
         console.error("trabajos de GitHub:", error);
         await recordAlert({ type: "seo-github-jobs-failed", subject: "Los trabajos SEO de GitHub han fallado", body: String(error).slice(0, 1000) }).catch(() => {});
+      }
+      // Evidencia admitida (una vez al día): las cifras que una mejora de artículo puede usar.
+      try {
+        const note = await refreshEvidence(new Date());
+        if (note) console.log(`  ${note}`);
+      } catch (error) {
+        console.error("evidencia admitida:", error);
       }
       // IA editorial (§16.4): calibración con GSC y un artículo por pasada, con Claude sin herramientas.
       try {

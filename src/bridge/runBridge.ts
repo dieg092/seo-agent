@@ -13,6 +13,8 @@ import { containsPrivate } from "../privacy/outboundPolicy";
 import { InvalidTransitionError, transition, type LifecycleEvent } from "../opportunity/lifecycle";
 import { lifecycleData, lifecycleOf } from "../prioritization/prioritize";
 import { dismissalValue, type PriorityFactors } from "../prioritization/priority";
+import { factsForPrompt, renderFactsForPrompt, type Fact } from "../editorial/evidence";
+import { loadFacts } from "../editorial/evidenceStore";
 import { pilotHasRoom } from "../editorial/pilot";
 import { batteryState } from "../editorial/battery";
 import { AUTO_DAILY_CAP, buildContract, isAutoCandidate, promoteToAuto, renderDescription, renderPrompt, taskTitle, validateContract, type SeoTaskContract } from "./contract";
@@ -190,6 +192,7 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
 
   const dir = mkdtempSync(join(tmpdir(), "seo-bridge-"));
   let pilotRoom: boolean | undefined;
+  let facts: Fact[] | undefined;
   try {
     for (const c of plan) {
       const opp = await prisma.opportunity.findUnique({ where: { id: c.id } });
@@ -205,7 +208,10 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
       // Mejoras de artículos: solo se crean cuando el piloto editorial tiene plaza (si no, se quedan
       // abiertas y retenidas en Órbita); el hallazgo espera y vuelve a planearse en otra pasada.
       if (promoted && built.operation === "content-improve" && !(pilotRoom ??= (await batteryState(now)).status === "ok" && (await pilotHasRoom(now)))) continue;
-      const contract = promoted ?? built;
+      const chosen = promoted ?? built;
+      // Mejoras de artículos: la IA recibe los datos admitidos del tema (las únicas cifras nuevas que puede usar).
+      const contract: SeoTaskContract =
+        chosen.operation === "content-improve" ? { ...chosen, admittedFacts: renderFactsForPrompt(factsForPrompt([opp.title, opp.page ?? "", JSON.stringify(opp.detail ?? "")].join(" "), (facts ??= await loadFacts(now)), 30)).slice(0, 7000) || undefined } : chosen;
       const auto = promoted !== null;
       const errors = validateContract(contract, { allowAutoMerge: auto });
       if (errors.length > 0) {

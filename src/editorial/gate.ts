@@ -18,6 +18,8 @@ import { RUBRIC_VERSION } from "./rubric";
 import { editorialConfigKey, pairedDecision } from "./paired";
 import { batteryState } from "./battery";
 import { reservePilot } from "./pilot";
+import { factsHash, type Fact } from "./evidence";
+import { loadFacts } from "./evidenceStore";
 
 export { MIN_IMPROVEMENT, DISAGREEMENT } from "./paired";
 /** Una calibración vale 35 días (se rehace cada 30). */
@@ -42,8 +44,8 @@ export interface GateInput {
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 
 /** Clave de la caché de la guarda: textos de main y de la rama y toda la configuración que decide. */
-export function gateCacheKey(baseText: string, headText: string): string {
-  return hash([editorialConfigKey(), hash(baseText), hash(headText)].join("|"));
+export function gateCacheKey(baseText: string, headText: string, facts: readonly Fact[] = []): string {
+  return hash([editorialConfigKey(), hash(baseText), hash(headText), factsHash(facts)].join("|"));
 }
 
 export async function editorialGate(g: GateInput): Promise<GuardDecision> {
@@ -65,7 +67,8 @@ export async function editorialGate(g: GateInput): Promise<GuardDecision> {
   const headMd = headSrc && contentFromSource(headSrc);
   if (!baseMd || !headMd) return { code: BLOCK, reason: `no se puede leer el texto de ${slug} en main o en la rama` };
 
-  const gateKey = gateCacheKey(baseMd, headMd);
+  const facts = await loadFacts(g.now);
+  const gateKey = gateCacheKey(baseMd, headMd, facts);
   const cached = await prisma.editorialScore.findFirst({ where: { slug, contentHash: gateKey, kind: "gate" }, orderBy: { createdAt: "desc" } });
   let approve: boolean;
   let reason: string;
@@ -73,7 +76,7 @@ export async function editorialGate(g: GateInput): Promise<GuardDecision> {
     approve = cached.decision === "approve";
     reason = `(ya evaluado) ${cached.reason}`;
   } else {
-    const d = await pairedDecision({ url, label: slug, baseMd, headMd, siteBase: g.siteBase, runner: g.runner });
+    const d = await pairedDecision({ url, label: slug, baseMd, headMd, siteBase: g.siteBase, runner: g.runner, facts });
     approve = d.approve;
     reason = d.reason;
     if (d.evaluated && d.base && d.head) {

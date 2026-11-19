@@ -191,7 +191,7 @@ test("cifras nuevas: bloquea sin gastar evaluaciones, lleven o no un enlace al l
   for (const body of ["Texto nuevo: el 73% de las parejas lo hace y cuesta 1.200 €.", "Texto nuevo y mejor: el 73% según [el INE](https://www.ine.es/x)."]) {
     const d = await editorialGate(input({ runner: run.r, readFile: async (_p, ref) => (ref === "main" ? MAIN : src(`## Plazos\\n\\n${body}`)) }));
     assert.equal(d.code, 1);
-    assert.match(d.reason, /cifras que no estaban en main \(73%/);
+    assert.match(d.reason, /cifras que no estaban en main ni en los datos admitidos.*\(73%/);
   }
   assert.equal(run.calls(), 0);
 });

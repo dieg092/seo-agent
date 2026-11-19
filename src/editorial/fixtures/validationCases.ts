@@ -1,10 +1,11 @@
+import { factsFromWeddingRows, type Fact } from "../evidence";
 // src/editorial/fixtures/validationCases.ts
 // Batería de defectos (plan de Codex, paso 4). Todo es sintético: un artículo base razonable
 // y 20 «mejoras» que parecen aportar algo pero esconden un defecto conocido. La guarda editorial
 // completa (pairedDecision) no puede aprobar ninguna crítica y como mucho puede dejar pasar el 10 %
 // del resto. Casos críticos: cifras inventadas, contradicciones y cambio de intención.
 
-export const BATTERY_VERSION = "battery-v2";
+export const BATTERY_VERSION = "battery-v3";
 export const BATTERY_SLUG = "bateria/lista-de-invitados";
 
 export const BASE_ARTICLE = `# Cómo hacer la lista de invitados de la boda sin discutir
@@ -42,6 +43,9 @@ Las confirmaciones de palabra se olvidan. Pedid que cada invitado confirme por e
 Si los padres pagan una parte, es razonable que propongan algunos nombres, pero dentro del límite que habéis fijado. Dadles un número de plazas concreto en vez de discutir nombre por nombre.
 `;
 
+/** Catálogo fijo de la batería (no el real, que cambia cada día): un dato propio de dietas. */
+export const BATTERY_FACTS: Fact[] = factsFromWeddingRows([{ metric: "dieta:vegetariana", value: 12, unit: "%", n_bodas: 40, n_registros: 3000, desde: "2025-05-01", hasta: "2026-10-31" }]);
+
 export interface BatteryCase {
   id: string;
   kind: "figures" | "contradiction" | "intent" | "omission" | "misleading-link" | "filler" | "generic" | "redundancy";
@@ -60,6 +64,8 @@ export const BATTERY_CASES: BatteryCase[] = [
   { id: "cifra-porcentaje", kind: "figures", critical: true, head: add(`## Lo que hacen otras parejas\n\nSegún nuestra experiencia, el 68% de las parejas recorta la lista al menos dos veces. Tenerlo en cuenta desde el principio os ahorra disgustos y os ayuda a fijar el límite con realismo.`) },
   { id: "cifra-precio", kind: "figures", critical: true, head: add(`## Cuánto cuesta cada invitado\n\nEl cubierto medio en España ronda los 95 € por invitado, así que cada persona que añadís a la lista pesa en el presupuesto. Hacer la cuenta antes de invitar ayuda a ser coherentes.`) },
   { id: "cifra-proporcion", kind: "figures", critical: true, head: add(`## Cuántos dirán que sí\n\nNo todos los invitados vienen: siete de cada diez suelen confirmar, así que podéis invitar a algo más de gente de la que cabe sin miedo a pasaros.`) },
+  { id: "cifra-admitida-sin-cita", kind: "figures", critical: true, head: add(`## Menús especiales\n\nCalculad que el 12 % de los invitados pedirá menú vegetariano, así que avisad al catering con tiempo y pedid que os confirme cuántos menús prepara.`) },
+  { id: "cifra-admitida-otro-tema", kind: "figures", critical: true, head: add(`## Quién se retrasa\n\nEn las bodas que se organizan con miwebdeboda, el 12 % de los invitados no confirma a tiempo, así que conviene escribirles unos días antes de la fecha límite.`) },
   { id: "cifra-plazo", kind: "figures", critical: true, head: replace("e indicad una fecha límite clara.", "e indicad una fecha límite clara: lo correcto es enviarlas 6 semanas antes y cerrar la lista 15 días antes de la boda.") },
   // ── Contradicciones (críticos) ─────────────────────────────────────────────
   {

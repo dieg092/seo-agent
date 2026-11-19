@@ -3,7 +3,7 @@ import { test, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../db";
 import { batteryDue, batteryPasses, batteryState, earlyVerdict, modelOrder, stepBattery, MAX_QUALITY_ATTEMPTS, MAX_QUOTA_HITS, RUN_MAX_DAYS } from "./battery";
-import { BASE_ARTICLE, BATTERY_CASES } from "./fixtures/validationCases";
+import { BASE_ARTICLE, BATTERY_CASES, BATTERY_FACTS } from "./fixtures/validationCases";
 import { deterministicBlock } from "./paired";
 import { CRITERION_KEYS } from "./rubric";
 import type { Runner } from "./evaluator";
@@ -19,7 +19,7 @@ const alert = async (a: { type: string; subject: string; body: string }) => {
   alerts.push(a.subject);
   await prisma.alert.create({ data: a });
 };
-const MODEL_CASES = BATTERY_CASES.filter((c) => !deterministicBlock(BASE_ARTICLE, c.head, c.id)).length;
+const MODEL_CASES = BATTERY_CASES.filter((c) => !deterministicBlock(BASE_ARTICLE, c.head, c.id, BATTERY_FACTS)).length;
 
 function counting(r: (user: string) => number) {
   let calls = 0;
@@ -45,10 +45,10 @@ beforeEach(async () => {
   await prisma.alert.deleteMany({ where: { type: "editorial-disabled" } });
 });
 
-test("20 casos, 10 críticos; los de cifras se resuelven sin llamar al modelo; críticos primero", () => {
-  assert.equal(BATTERY_CASES.length, 20);
-  assert.equal(BATTERY_CASES.filter((c) => c.critical).length, 10);
-  assert.equal(BATTERY_CASES.length - MODEL_CASES, 4, "los 4 casos de cifras son deterministas");
+test("22 casos, 12 críticos; los de cifras se resuelven sin llamar al modelo; críticos primero", () => {
+  assert.equal(BATTERY_CASES.length, 22);
+  assert.equal(BATTERY_CASES.filter((c) => c.critical).length, 12);
+  assert.equal(BATTERY_CASES.length - MODEL_CASES, 6, "los 6 casos de cifras son deterministas (también con el dato admitido mal usado)");
   const order = modelOrder(BATTERY_CASES);
   assert.ok(order.slice(0, 10).every((c) => c.critical));
 });
@@ -64,7 +64,7 @@ test("umbral y corte temprano: un crítico escapado o no poder llegar al 90 % de
 test("evaluador estricto: pasa con una llamada cada vez y las mínimas (2 de la base + 2 por caso con modelo)", async () => {
   const r = counting(() => 7.5);
   const note = await stepBattery(r.runner, NOW, SITE, { unbudgeted: true, alert });
-  assert.match(note, /pasa \(20\/20\)/);
+  assert.match(note, /pasa \(22\/22\)/);
   assert.equal(r.calls(), 2 + 2 * MODEL_CASES);
   assert.equal(r.maxActive(), 1, "nunca dos llamadas a la vez");
   assert.equal((await batteryState(NOW)).status, "ok");
