@@ -79,11 +79,23 @@ export async function pairedDecision(input: { url: string; label: string; baseMd
   const gain = round(head.score - base.score);
   const out = (approve: boolean, reason: string): PairedDecision => ({ approve, reason, base, head, gain, evaluated: true });
 
+  // Motivo útil para la ronda de corrección: los criterios más flojos de la rama con la nota del evaluador.
+  const why = (keys: CriterionKey[]) => {
+    const worst = (keys.length ? keys : [...CRITERION_KEYS].sort((a, b) => meanCriterion(head, a) - meanCriterion(head, b))).slice(0, 3);
+    const notes = worst
+      .map((k) => {
+        const e = [...head.evals].sort((x, y) => x.criteria[k].score - y.criteria[k].score)[0];
+        const note = e.criteria[k].note.replace(/\s+/g, " ").trim().slice(0, 70);
+        return note ? `${k}: ${note}` : null;
+      })
+      .filter(Boolean);
+    return notes.length ? ` — qué falla: ${notes.join("; ")}` : "";
+  };
   const low = CRITERION_KEYS.filter((k) => head.evals.some((e) => e.criteria[k].score < CRITERION_FLOOR));
-  if (low.length) return out(false, `bloquea: ${input.label} en la rama tiene criterios por debajo de ${CRITERION_FLOOR}: ${low.join(", ")} (main ${base.score})`);
+  if (low.length) return out(false, `bloquea: ${input.label} en la rama tiene criterios por debajo de ${CRITERION_FLOOR}: ${low.join(", ")} (main ${base.score})${why(low)}`);
   const worse = CRITICAL.filter((k) => meanCriterion(base, k) - meanCriterion(head, k) > CRITICAL_MAX_DROP);
-  if (worse.length) return out(false, `bloquea: ${input.label} empeora criterios críticos: ${worse.join(", ")}`);
-  if (head.score < APPROVE_MIN) return out(false, `bloquea: ${input.label} en la rama nota ${head.score} < ${APPROVE_MIN} (main ${base.score})`);
-  if (gain < MIN_IMPROVEMENT) return out(false, `bloquea: ${input.label} solo mejora ${gain} (${base.score} → ${head.score}; hace falta +${MIN_IMPROVEMENT})`);
+  if (worse.length) return out(false, `bloquea: ${input.label} empeora criterios críticos: ${worse.join(", ")}${why(worse)}`);
+  if (head.score < APPROVE_MIN) return out(false, `bloquea: ${input.label} en la rama nota ${head.score} < ${APPROVE_MIN} (main ${base.score})${why([])}`);
+  if (gain < MIN_IMPROVEMENT) return out(false, `bloquea: ${input.label} solo mejora ${gain} (${base.score} → ${head.score}; hace falta +${MIN_IMPROVEMENT})${why([])}`);
   return out(true, `aprueba: ${input.label} pasa de ${base.score} a ${head.score}`);
 }
