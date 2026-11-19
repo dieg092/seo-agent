@@ -53,10 +53,10 @@ test("aprueba si la rama pasa y mejora a main; la misma versión no se vuelve a 
   const d = await editorialGate(input({ runner: run.r }));
   assert.equal(d.code, 0, d.reason);
   assert.match(d.reason, /pasa de 6 a 7.6/);
-  assert.equal(run.calls(), 2);
+  assert.equal(run.calls(), 3, "main una vez y la rama dos");
   const again = await editorialGate(input({ runner: run.r }));
   assert.equal(again.code, 0);
-  assert.equal(run.calls(), 2, "caché por texto");
+  assert.equal(run.calls(), 3, "caché por texto");
 });
 
 test("bloquea si no llega a 7 o si casi no mejora", async () => {
@@ -96,10 +96,34 @@ test("retiene con la calibración caducada, sin validez reciente, pendiente o en
 test("la caché depende de main: si main cambia, se vuelve a evaluar", async () => {
   const run = runner(6, 7.6);
   assert.equal((await editorialGate(input({ runner: run.r }))).code, 0);
-  assert.equal(run.calls(), 2);
+  assert.equal(run.calls(), 3);
   const otherMain = src("## Plazos\\n\\nTexto viejo distinto del artículo sobre la fiesta.");
   await editorialGate(input({ runner: run.r, readFile: async (_p, ref) => (ref === "main" ? otherMain : HEAD) }));
-  assert.equal(run.calls(), 4, "otra base, otra evaluación");
+  assert.equal(run.calls(), 6, "otra base, otra evaluación");
+});
+
+test("cifras nuevas sin fuente: bloquea sin gastar evaluaciones; con enlace, evalúa", async () => {
+  const run = runner(6, 7.6);
+  const sinFuente = src("## Plazos\\n\\nTexto nuevo: el 73% de las parejas lo hace y cuesta 1.200 €.");
+  const d = await editorialGate(input({ runner: run.r, readFile: async (_p, ref) => (ref === "main" ? MAIN : sinFuente) }));
+  assert.equal(d.code, 1);
+  assert.match(d.reason, /cifras sin fuente \(73%, 1\.200€\)/);
+  assert.equal(run.calls(), 0);
+  const conFuente = src("## Plazos\\n\\nTexto nuevo y mejor: el 73% según [el INE](https://www.ine.es/x).");
+  await editorialGate(input({ runner: run.r, readFile: async (_p, ref) => (ref === "main" ? MAIN : conFuente) }));
+  assert.equal(run.calls(), 3);
+});
+
+test("dos evaluaciones que discrepan: desempata una tercera con la mediana", async () => {
+  let n = 0;
+  const scores = [6, 9.5, 7.2, 8]; // main, rama 1, rama 2, desempate
+  const r: Runner = async ({ user }) => {
+    const score = user.includes("viejo") ? 6 : scores[1 + (n++ % 3)];
+    return { summary: "", criteria: Object.fromEntries(CRITERION_KEYS.map((k) => [k, { score, evidence: ["del artículo sobre la fiesta"], note: "" }])) };
+  };
+  const d = await editorialGate(input({ runner: r }));
+  assert.equal(d.code, 0, d.reason);
+  assert.match(d.reason, /pasa de 6 a 8/);
 });
 
 test("markdown del repositorio: texto y hechos", () => {

@@ -14,9 +14,12 @@ import { contentFromSource, extractArticleFromMarkdown } from "./article";
 import { detectHollow } from "./hollow";
 import { EVALUATOR_MODEL, SYSTEM_PROMPT, evaluateArticle, type Runner } from "./evaluator";
 import { MIN_VALIDITY_N } from "./calibration";
+import { unsourcedNewFigures } from "./claims";
 import { EXCELLENT, RUBRIC_VERSION, combineExcellent, decide } from "./rubric";
 
 export const MIN_IMPROVEMENT = 0.5;
+/** Dos evaluaciones de la misma versión que se separan más de esto: se desempata con una tercera. */
+export const DISAGREEMENT = 1;
 /** Una calibración vale 35 días (se rehace cada 30). */
 export const CALIBRATION_MAX_AGE_DAYS = 35;
 /** La validez (nota–GSC) se recalcula en cada pasada del puente: más de 2 días sin ella, se retiene. */
@@ -66,6 +69,10 @@ export async function editorialGate(g: GateInput): Promise<GuardDecision> {
   const headMd = headSrc && contentFromSource(headSrc);
   if (!baseMd || !headMd) return { code: BLOCK, reason: `no se puede leer el texto de ${slug} en main o en la rama` };
 
+  // Cifras nuevas sin fuente: bloqueo determinista, antes de gastar evaluaciones.
+  const unsourced = unsourcedNewFigures(baseMd, headMd);
+  if (unsourced.length > 0) return { code: BLOCK, reason: `IA editorial bloquea: ${slug} añade cifras sin fuente (${unsourced.slice(0, 3).map((u) => u.figure).join(", ")})` };
+
   const headDoc = extractArticleFromMarkdown(headMd, g.siteBase);
   const baseDoc = extractArticleFromMarkdown(baseMd, g.siteBase);
   // La decisión vale para esta pareja exacta main/rama con esta rúbrica, este prompt y este modelo.
@@ -75,14 +82,18 @@ export async function editorialGate(g: GateInput): Promise<GuardDecision> {
 
   const baseHollow = detectHollow(baseDoc.text);
   const headHollow = detectHollow(headDoc.text);
-  const [base, head] = await Promise.all([
-    evaluateArticle({ url, doc: baseDoc, hollow: baseHollow, similar: [] }, g.runner),
-    evaluateArticle({ url, doc: headDoc, hollow: headHollow, similar: [] }, g.runner),
-  ]);
-  let headFinal = head.score;
-  if (head.score >= EXCELLENT) {
-    const second = await evaluateArticle({ url, doc: headDoc, hollow: headHollow, similar: [] }, g.runner);
-    headFinal = combineExcellent(head.score, second.score);
+  // Dos evaluaciones independientes de la rama (y una tercera si discrepan más de un punto): vale la
+  // más baja, salvo el desempate, que toma la mediana. Un 9 solo cuenta si las dos lo confirman.
+  const evalHead = () => evaluateArticle({ url, doc: headDoc, hollow: headHollow, similar: [] }, g.runner);
+  const [base, head, head2] = await Promise.all([evaluateArticle({ url, doc: baseDoc, hollow: baseHollow, similar: [] }, g.runner), evalHead(), evalHead()]);
+  let headFinal: number;
+  if (Math.abs(head.score - head2.score) > DISAGREEMENT) {
+    const third = await evalHead();
+    headFinal = [head.score, head2.score, third.score].sort((x, y) => x - y)[1];
+  } else if (Math.min(head.score, head2.score) >= EXCELLENT) {
+    headFinal = combineExcellent(head.score, head2.score);
+  } else {
+    headFinal = Math.min(head.score, head2.score);
   }
 
   const d = decide(headFinal, head.criteria);

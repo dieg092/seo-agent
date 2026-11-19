@@ -11,7 +11,8 @@ import { prisma } from "../db";
 import { getEnv } from "../env";
 import { recordAlert } from "../alerts/recordAlert";
 import { getPublishedArticleUrls } from "../embeddings/fetchArticleContent";
-import { extractArticle } from "./article";
+import { extractArticle, extractArticleFromMarkdown } from "./article";
+import { DEFECTIVE_ARTICLE, DEFECTIVE_MAX_SCORE, DEFECTIVE_SLUG } from "./fixtures/defective";
 import { detectHollow } from "./hollow";
 import { EVALUATOR_MODEL, claudeRunner, evaluateArticle, type Runner } from "./evaluator";
 import { EXCELLENT, RUBRIC_VERSION, combineExcellent, decide } from "./rubric";
@@ -157,7 +158,13 @@ async function runCalibration(ctx: Ctx, articles: { slug: string; url: string }[
   }
   // Si el texto de una referencia ha cambiado, su ancla ya no vale: se compara solo el orden.
   const comparable = refs.map((r) => ({ ...r, anchor: r.contentHash && r.contentHash === hashes.get(r.slug) ? r.anchor : null }));
-  const check = checkCalibration(comparable, scores, await validityPairs(outcomes));
+  let check = checkCalibration(comparable, scores, await validityPairs(outcomes));
+  // Artículo trampa: si el evaluador no ve sus defectos, no se fía de él hasta la siguiente calibración.
+  if (check.status === "ok") {
+    const trapDoc = extractArticleFromMarkdown(DEFECTIVE_ARTICLE, ctx.base);
+    const trap = await evaluateArticle({ url: `${ctx.base}/blog/${DEFECTIVE_SLUG}`, doc: trapDoc, hollow: detectHollow(trapDoc.text), similar: [] }, ctx.runner);
+    if (trap.score >= DEFECTIVE_MAX_SCORE) check = { status: "drift", detail: `el artículo trampa saca ${trap.score} (tiene que quedar por debajo de ${DEFECTIVE_MAX_SCORE})` } as typeof check;
+  }
   const next: Reference[] = refs.map((r, i) => ({
     slug: r.slug,
     tier: r.tier as Tier,

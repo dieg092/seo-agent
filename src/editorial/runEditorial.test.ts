@@ -40,7 +40,8 @@ test("calibra con GSC primero, luego evalúa un artículo por pasada y bloquea l
   const f = fakeRunner((u) => 8.8 - idx(u) * 0.3); // ordena como GSC: art-0 8.8 … art-13 4.9
   const n1 = await runEditorial({ now: NOW, runner: f.runner, fetchHtml, listArticles });
   assert.match(n1[0], /calibración: ok/);
-  assert.equal(f.calls.length, 6, "6 referencias");
+  assert.equal(f.calls.length, 7, "6 referencias y el artículo trampa");
+  assert.ok(f.calls.some((u) => u.includes("trampa")));
   assert.ok(!f.calls.some((u) => u.endsWith("/organizar-boda")), "las categorías no se evalúan");
   const cal = await prisma.editorialCalibration.findFirstOrThrow();
   assert.deepEqual((cal.references as { tier: string }[]).map((r) => r.tier), ["good", "good", "mid", "mid", "bad", "bad"]);
@@ -48,7 +49,7 @@ test("calibra con GSC primero, luego evalúa un artículo por pasada y bloquea l
   const n2 = await runEditorial({ now: new Date(NOW.getTime() + 60_000), runner: f.runner, fetchHtml, listArticles });
   assert.equal(n2.length, 1);
   assert.match(n2[0], /editorial: organizar-boda\/art-\d+ /);
-  assert.equal(f.calls.length, 7);
+  assert.equal(f.calls.length, 8);
   const blocked = await prisma.editorialScore.findMany({ where: { decision: "block" } });
   assert.ok(blocked.every((b) => b.finalScore < 7));
   assert.ok(blocked.length >= 2);
@@ -66,6 +67,17 @@ test("con las notas al revés que GSC en 12 o más artículos, suspende y avisa"
   const n2 = await runEditorial({ now: new Date(NOW.getTime() + 60_000), runner: f.runner, fetchHtml, listArticles });
   assert.match(n2[0], /suspendida/);
   assert.equal(f.calls.length, 6);
+});
+
+test("si el evaluador aprueba el artículo trampa, la calibración no vale", async () => {
+  const runner: Runner = async ({ user }) => {
+    const trap = user.includes("trampa");
+    const score = trap ? 8.5 : 8.8 - idx(/URL: (\S+)/.exec(user)![1]) * 0.3;
+    const evidence = trap ? ["organizar una boda es una experiencia única"] : ["texto propio del artículo número"];
+    return { summary: "s", criteria: Object.fromEntries(CRITERION_KEYS.map((k) => [k, { score, evidence, note: "" }])) };
+  };
+  const n1 = await runEditorial({ now: NOW, runner, fetchHtml, listArticles });
+  assert.match(n1[0], /calibración: drift \(el artículo trampa saca/);
 });
 
 test("deriva: las referencias se reutilizan al mes y una que se mueve más de 1 punto suspende", async () => {
