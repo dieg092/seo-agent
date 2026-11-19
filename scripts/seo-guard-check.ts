@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { prisma } from "../src/db";
 import { readControl } from "../src/brake/control";
 import { containsPrivate } from "../src/privacy/outboundPolicy";
+import { semanticScope } from "../src/bridge/semanticScope";
 import { recordAlert } from "../src/alerts/recordAlert";
 import { BLOCK, HOLD, guardDecision, type GuardStage, type PullRequestInfo } from "../src/bridge/guard";
 import { parseNumstat, type DiffFile } from "../src/bridge/scopeCheck";
@@ -103,6 +104,34 @@ async function main(): Promise<number> {
   // El texto del PR (lo escribe la IA) tampoco puede llevar nada privado.
   if (d.code === 0 && pr && containsPrivate({ title: pr.title, body: pr.body })) {
     d = { code: BLOCK, reason: "el título o la descripción del PR contienen una URL o un dato privado" };
+  }
+  // Alcance por significado: cada operación A1 solo cambia lo que dice su contrato (riesgo 1).
+  if (d.code === 0 && stage === "premerge" && link?.operation && pr) {
+    const urls = ((link.contract as { urls?: unknown } | null)?.urls ?? []) as string[];
+    const raw = (path: string, ref: string): string | null => {
+      try {
+        return run("gh", ["api", "-H", "Accept: application/vnd.github.raw", `repos/${pr.repo}/contents/${path}?ref=${ref}`]);
+      } catch {
+        return null;
+      }
+    };
+    let mergeBase = "";
+    try {
+      mergeBase = run("gh", ["api", `repos/${pr.repo}/compare/main...${pr.headSha}`, "--jq", ".merge_base_commit.sha"]).trim();
+    } catch {
+      mergeBase = "";
+    }
+    if (!mergeBase) d = { code: HOLD, reason: "no se puede leer la base del PR para comprobar el alcance" };
+    else {
+      const files = pr.files
+        .filter((f) => !f.path.includes(" => "))
+        .map((f) => ({ path: f.path, base: raw(f.path, mergeBase), head: raw(f.path, pr.headSha) }));
+      if (pr.files.some((f) => f.path.includes(" => "))) d = { code: BLOCK, reason: "el PR renombra ficheros" };
+      else {
+        const s = semanticScope(link.operation, files, Array.isArray(urls) ? urls : []);
+        if (!s.ok) d = { code: BLOCK, reason: `alcance: ${s.reason}` };
+      }
+    }
   }
   // Mejoras de artículos: además, la IA editorial tiene que aprobar la versión de la rama (B5).
   if (d.code === 0 && stage === "premerge" && link?.operation === "content-improve" && pr) {
