@@ -256,3 +256,12 @@ test("funnel-drop: cae una etapa con n ≥ 30 en las dos ventanas, solo canales 
   const small = rows.map((r) => ({ ...r, registros: 10 }));
   assert.equal(extractFunnelFindings(small, NOW).length, 0);
 });
+
+test("funnel-drop: lo declarado como Google cuenta como orgánico; lo declarado de otro canal, no", () => {
+  const rows = [
+    { date: daysAgo(60), channel: "declarado:google", registros: 100, bodasPublicadas: 50, pagos: 10 },
+    { date: daysAgo(10), channel: "declarado:google", registros: 40, bodasPublicadas: 8, pagos: 2 },
+    { date: daysAgo(10), channel: "declarado:instagram", registros: 500, bodasPublicadas: 400, pagos: 0 },
+  ];
+  assert.deepEqual(extractFunnelFindings(rows, NOW).map((f) => f.stableKeyInput), ["funnel-drop:registro → web publicada"]);
+});

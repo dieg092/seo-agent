@@ -243,3 +243,13 @@ test("los eventos de evaluación nunca fallan en ningún estado", () => {
     assert.doesNotThrow(() => transition(at(state), { type: "tick", taskClosed: true }, day(1)));
   }
 });
+
+test("detected → resolved: si no vuelve a aparecer en 3 evaluaciones seguidas, se cierra", () => {
+  let lc = initialLifecycle(false, t0);
+  lc = transition(lc, absent, day(1));
+  lc = transition(lc, absent, day(2));
+  assert.equal(lc.state, "detected");
+  lc = transition(lc, absent, day(3));
+  assert.equal(lc.state, "resolved");
+  assert.equal(transition(lc, seen, day(4)).state === "resolved", false, "si reaparece, vuelve al ciclo");
+});

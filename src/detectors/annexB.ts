@@ -625,8 +625,12 @@ export interface FunnelRow {
 }
 
 export const FUNNEL_MIN_N = 30;
-/** Canales de buscador de la vista seo_funnel_daily (seo_referrer_channel). */
-export const ORGANIC_CHANNELS = new Set(["google", "bing"]);
+/**
+ * Canales de buscador de la vista seo_funnel_daily: los medidos por la cookie de
+ * origen (seo_referrer_channel) y, sin cookie, el que la pareja declaró al
+ * registrarse o al pagar («declarado:google», vista v2).
+ */
+export const ORGANIC_CHANNELS = new Set(["google", "bing", "declarado:google"]);
 
 /**
  * Una etapa del embudo orgánico (registro → web publicada → pago) cae frente a

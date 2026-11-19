@@ -171,9 +171,13 @@ function onObserved(current: Lifecycle, event: { critical: boolean; value: numbe
 
 function onAbsent(current: Lifecycle, now: Date): Lifecycle {
   switch (current.state) {
-    case "detected":
-      // No llegó a confirmarse: vuelve a empezar la cuenta.
-      return { ...current, confirmations: 0, absences: current.absences + 1 };
+    case "detected": {
+      // No llegó a confirmarse: vuelve a empezar la cuenta y, si sigue sin
+      // aparecer, se cierra (si no, se quedaba «detectado» para siempre).
+      const absences = current.absences + 1;
+      const gone = { ...current, confirmations: 0, absences };
+      return absences >= ABSENCES_TO_RESOLVE ? moveTo(gone, "resolved", now) : gone;
+    }
     case "open":
     case "verifying": {
       const absences = current.absences + 1;
