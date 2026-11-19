@@ -11,7 +11,7 @@ const PAGE = `<html><body><article><p>El INE registró 175.364 matrimonios en 20
 const deps = (o: Partial<EvidenceDeps> = {}): EvidenceDeps => ({
   readBank: async () => BANK,
   dataPages: async () => [{ path: "/estadisticas-bodas/espana", html: PAGE }],
-  weddingRows: async () => [{ metric: "dieta:vegetariana", value: 12, unit: "%", n_bodas: 40, n_registros: 3000, desde: "2025-05-01", hasta: "2026-10-31" }],
+  weddingRows: async () => [{ metric: "muestra:bodas", value: 40, unit: "bodas", n_bodas: 40, n_registros: 40, desde: null, hasta: null }, { metric: "dieta:vegetariana", value: 12, unit: "%", n_bodas: 40, n_registros: 3000, desde: "2025-05-01", hasta: "2026-10-31" }],
   ...o,
 });
 
@@ -21,7 +21,7 @@ beforeEach(async () => {
 
 test("refresca las cuatro fuentes, una vez al día, y el catálogo caduca a los 14 días", async () => {
   const note = await refreshEvidence(NOW, deps());
-  assert.match(note, /producto 1, banco 1, web 1, propio 1/);
+  assert.match(note, /producto 1, banco 1, web 1, propio 1 \(muestra: 40 bodas/);
   assert.equal((await loadFacts(NOW)).length, 4);
   assert.equal(await refreshEvidence(new Date(NOW.getTime() + 3600_000), deps()), "", "antes de 24 h no se repite");
   assert.equal((await loadFacts(new Date(NOW.getTime() + 15 * DAY))).length, 0, "sin refrescar en 14 días: ninguna cifra nueva");

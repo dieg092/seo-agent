@@ -13,6 +13,7 @@ import { extractArticle } from "./article";
 import {
   EVIDENCE_MAX_AGE_DAYS,
   EVIDENCE_REFRESH_HOURS,
+  MIN_WEDDINGS,
   factsFromBank,
   factsFromPage,
   factsFromWeddingRows,
@@ -91,11 +92,20 @@ export async function refreshEvidence(now: Date, deps: EvidenceDeps = defaultEvi
   if (!opts.force && last && now.getTime() - last.verifiedAt.getTime() < EVIDENCE_REFRESH_HOURS * 3_600_000) return "";
   const siteBase = getEnv("SITE_BASE_URL").replace(/\/+$/, "");
   const notes: string[] = [];
+  let sample = "";
   const sources: [FactKind, () => Promise<Fact[]>][] = [
     ["producto", async () => productFacts()],
     ["banco", async () => factsFromBank(await deps.readBank())],
     ["web", async () => (await deps.dataPages()).flatMap((p) => pageFacts(p.path, p.html, siteBase))],
-    ["propio", async () => factsFromWeddingRows(await deps.weddingRows())],
+    [
+      "propio",
+      async () => {
+        const rows = await deps.weddingRows();
+        const n = rows.find((r) => r.metric === "muestra:bodas");
+        if (n) sample = ` (muestra: ${Number(n.value)} bodas; hacen falta ${MIN_WEDDINGS} por cifra)`;
+        return factsFromWeddingRows(rows);
+      },
+    ],
   ];
   for (const [kind, load] of sources) {
     try {
@@ -109,7 +119,7 @@ export async function refreshEvidence(now: Date, deps: EvidenceDeps = defaultEvi
       notes.push(`${kind} sin refrescar (${/42P01/.test(msg) ? "la vista aún no existe" : msg.slice(0, 80)})`);
     }
   }
-  return `evidencia admitida: ${notes.join(", ")}`;
+  return `evidencia admitida: ${notes.join(", ")}${sample}`;
 }
 
 /** Catálogo vigente: datos activos verificados en los últimos 14 días. */
