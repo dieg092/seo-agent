@@ -29,7 +29,10 @@ async function allowedByRobots(url: string): Promise<boolean> {
 }
 
 async function verify(): Promise<number> {
-  const rows = await prisma.backlinkOpportunity.findMany({ where: { OR: [{ status: "conseguido" }, { verifiedLink: { not: null } }] } });
+  // Conseguidos (siguen ahí) y pendientes de respuesta (por si ya han puesto el enlace).
+  const rows = await prisma.backlinkOpportunity.findMany({
+    where: { OR: [{ status: { in: ["conseguido", "propuesta", "contactado"] } }, { verifiedLink: { not: null } }] },
+  });
   let ok = 0;
   let lost = 0;
   for (const [i, row] of rows.entries()) {
@@ -51,10 +54,18 @@ async function verify(): Promise<number> {
     }
     await prisma.backlinkOpportunity.update({
       where: { id: row.id },
-      data: { lastCheckedAt: new Date(), ...(found ? { verifiedAt: new Date(), outcome: follow ? "enlace activo" : "enlace nofollow" } : { outcome: "enlace no encontrado" }) },
+      data: {
+        lastCheckedAt: new Date(),
+        ...(found
+          ? { verifiedAt: new Date(), verifiedLink: url, status: "conseguido", outcome: follow ? "enlace activo" : "enlace nofollow" }
+          : { outcome: "enlace no encontrado" }),
+      },
     });
+    if (found && row.status !== "conseguido") {
+      await recordAlert({ type: "backlink-new", subject: `Nuevo enlace de ${row.domain}`, body: `${url} ya enlaza a miwebdeboda.com${follow ? "" : " (nofollow)"}.` });
+    }
     if (found) ok += 1;
-    else if (row.verifiedAt) {
+    else if (row.status === "conseguido" && row.verifiedAt) {
       lost += 1;
       await recordAlert({ type: "backlink-lost", subject: `Ya no aparece el enlace de ${row.domain}`, body: `La página ${url} no enlaza a miwebdeboda.com en la última comprobación.` });
     }
