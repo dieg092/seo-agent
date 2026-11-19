@@ -165,7 +165,7 @@ test("respeta el presupuesto", async () => {
     alert: noAlert,
   });
   assert.equal(calls.length, 2);
-  assert.deepEqual(r, { inspected: 2, failed: 0, skippedForBudget: 2 });
+  assert.deepEqual(r, { inspected: 2, failed: 0, transient: 0, skippedForBudget: 2 });
 
   // Una segunda ejecución el mismo día ya no tiene presupuesto: no inspecciona nada.
   const again: string[] = [];
@@ -198,7 +198,7 @@ test("un error no corta", async () => {
     },
   });
   assert.equal(calls.length, 3);
-  assert.deepEqual(r, { inspected: 2, failed: 1, skippedForBudget: 0 });
+  assert.deepEqual(r, { inspected: 2, failed: 1, transient: 0, skippedForBudget: 0 });
   const failed = await prisma.urlInspection.findFirst({ where: { url: `${PREFIX}p2` } });
   assert.equal(failed?.error, "fallo ficticio 500");
   assert.equal(failed?.verdict, null);
@@ -223,7 +223,7 @@ test("para con 429", async () => {
   });
   // Para en la segunda: no pide la tercera ni la cuarta.
   assert.equal(calls.length, 2);
-  assert.deepEqual(r, { inspected: 1, failed: 0, skippedForBudget: 3 });
+  assert.deepEqual(r, { inspected: 1, failed: 0, transient: 0, skippedForBudget: 3 });
   // Lo no inspeccionado no se guarda: no puede contar como desindexado.
   const rows = await prisma.urlInspection.findMany({ where: { url: { startsWith: PREFIX } } });
   assert.deepEqual(rows.map((x) => x.url), [`${PREFIX}p1`]);
@@ -292,4 +292,31 @@ test("lee el sitemap y sus hijos con lastmod", async () => {
     { url: `${PREFIX}a`, lastmod: new Date("2001-03-30") },
     { url: `${PREFIX}b`, lastmod: null },
   ]);
+});
+
+test("Google no disponible: reintenta y, si sigue, la aplaza sin guardarla ni avisar", async () => {
+  await cleanup();
+  const calls: string[] = [];
+  const alerts: string[] = [];
+  const waits: number[] = [];
+  let p3Fails = 1;
+  const unavailable = () => Object.assign(new Error("The service is currently unavailable."), { code: 503 });
+  const r = await collectUrlInspections({
+    inspect: fakeInspect(calls, (url) => (url.endsWith("p2") ? unavailable() : url.endsWith("p3") && p3Fails-- > 0 ? unavailable() : PASS)),
+    sitemap: async () => [1, 2, 3].map((n) => ({ url: `${PREFIX}p${n}`, lastmod: OLD })),
+    orphans: async () => [],
+    today: SUNDAY,
+    sleep: async (ms) => {
+      waits.push(ms);
+    },
+    alert: async (a) => {
+      alerts.push(a.type);
+    },
+  });
+  assert.deepEqual(r, { inspected: 2, failed: 0, transient: 1, skippedForBudget: 0 });
+  assert.equal(calls.filter((c) => c.endsWith("p2")).length, 3, "1 intento + 2 reintentos");
+  assert.ok(waits.includes(5_000) && waits.includes(20_000));
+  assert.equal(await prisma.urlInspection.findFirst({ where: { url: `${PREFIX}p2` } }), null, "no se guarda: vuelve a la cola");
+  assert.deepEqual(alerts, []);
+  await cleanup();
 });

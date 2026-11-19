@@ -10,7 +10,7 @@ async function main(): Promise<number> {
   try {
     const r = await collectUrlInspections();
     console.log(
-      `URL Inspection: ${r.inspected} inspeccionadas, ${r.failed} con error, ${r.skippedForBudget} sin inspeccionar por presupuesto`
+      `URL Inspection: ${r.inspected} inspeccionadas, ${r.failed} con error, ${r.transient} aplazadas (Google no respondía), ${r.skippedForBudget} sin inspeccionar por presupuesto`
     );
     if (r.failed > 0) exitCode = 1;
   } catch (error) {

@@ -144,6 +144,21 @@ export function selectForInspection(p: {
 }
 
 /** Cuota agotada: 429 o RESOURCE_EXHAUSTED en cualquiera de las formas que usa googleapis. */
+/**
+ * Error pasajero de Google (5xx, «currently unavailable», corte de red): se
+ * reintenta y, si sigue, la URL queda para la próxima pasada sin contar como fallo.
+ */
+export function isTransientInspectionError(error: unknown): boolean {
+  const e = error as { code?: unknown; status?: unknown; message?: unknown; response?: { status?: unknown } } | null;
+  if (!e) return false;
+  const status = Number(e.response?.status ?? e.status ?? e.code);
+  if (status >= 500 && status < 600) return true;
+  return /currently unavailable|backendError|internal error|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|timed? ?out/i.test(String(e.message ?? ""));
+}
+
+/** Esperas antes de cada reintento de un error pasajero. */
+export const TRANSIENT_RETRY_MS = [5_000, 20_000];
+
 export function isQuotaExhausted(error: unknown): boolean {
   const e = error as {
     code?: unknown;
@@ -266,7 +281,7 @@ export async function collectUrlInspections(
     sleep?: (ms: number) => Promise<void>;
     alert?: typeof recordAlert;
   } = {}
-): Promise<{ inspected: number; failed: number; skippedForBudget: number }> {
+): Promise<{ inspected: number; failed: number; transient: number; skippedForBudget: number }> {
   // Sin clave no se escribe nada: nunca se guarda una URL privada en claro.
   const key = requirePrivateUrlKey();
   const inspect = deps.inspect ?? inspectUrl;
@@ -301,7 +316,7 @@ export async function collectUrlInspections(
   });
   const queue = all.slice(0, remaining);
 
-  const result = { inspected: 0, failed: 0, skippedForBudget: all.length - queue.length };
+  const result = { inspected: 0, failed: 0, transient: 0, skippedForBudget: all.length - queue.length };
   const failures: string[] = [];
   let quotaStop: string | null = null;
   const intervalMs = perMinute > 0 ? Math.ceil(60_000 / perMinute) : 0;
@@ -313,8 +328,22 @@ export async function collectUrlInspections(
     const base = { url: redactUrl(item.url, key), inspectedAt: today, inSitemap: item.inSitemap, reason: item.reason };
     let data: InspectionResult;
     try {
-      data = await inspect(item.url);
+      let attempt = 0;
+      for (;;) {
+        try {
+          data = await inspect(item.url);
+          break;
+        } catch (error) {
+          if (!isTransientInspectionError(error) || attempt >= TRANSIENT_RETRY_MS.length) throw error;
+          await sleep(TRANSIENT_RETRY_MS[attempt++]);
+        }
+      }
     } catch (error) {
+      if (isTransientInspectionError(error)) {
+        // Google sigue sin responder: no se guarda nada y la URL vuelve a la cola mañana.
+        result.transient += 1;
+        continue;
+      }
       if (isQuotaExhausted(error)) {
         // Esta y las que quedan no se inspeccionan ni se guardan.
         result.skippedForBudget += queue.length - i;
