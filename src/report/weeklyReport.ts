@@ -25,6 +25,12 @@ export interface ReportInput {
   discoverImpressions28d: number;
   /** Bing Webmaster (fase 6), últimos 28 días frente a los 28 anteriores; null si aún no hay datos. */
   bing?: { clicks28: number; impressions28: number; clicksPrior28: number; impressionsPrior28: number; topQueries: { query: string; clicks: number; impressions: number }[] } | null;
+  /**
+   * Visitas que llegan desde asistentes de IA (canal «AI Assistant» de GA4, solo
+   * con analítica aceptada), 28 días frente a los 28 anteriores. Es lo único
+   * observable: ninguna IA publica impresiones ni posiciones.
+   */
+  aiAssistants?: { sessions28: number; sessionsPrior28: number; keyEvents28: number; topLanding: { page: string; sessions: number }[] } | null;
 }
 
 const DISCOVER_THRESHOLD = 500;
@@ -113,6 +119,16 @@ export function buildWeeklyReport(input: ReportInput): string {
       `28 días: ${b.clicks28} clics (${delta(b.clicks28, b.clicksPrior28)}) y ${b.impressions28} impresiones (${delta(b.impressions28, b.impressionsPrior28)}).`,
     );
     if (b.topQueries.length) lines.push(`Consultas no-marca con más impresiones: ${b.topQueries.map((q) => `«${q.query}» ${q.impressions}`).join(", ")}.`);
+    lines.push("");
+  }
+
+  if (input.aiAssistants) {
+    const a = input.aiAssistants;
+    lines.push("## Asistentes de IA", "");
+    lines.push(
+      `28 días: ${a.sessions28} visitas desde ChatGPT, Perplexity, Gemini y similares (${delta(a.sessions28, a.sessionsPrior28)}), ${a.keyEvents28} conversiones. Solo cuenta visitas con analítica aceptada; las IA no publican impresiones.`,
+    );
+    if (a.topLanding.length) lines.push(`Páginas por las que entran: ${a.topLanding.map((l) => `${l.page} ${l.sessions}`).join(", ")}.`);
     lines.push("");
   }
 

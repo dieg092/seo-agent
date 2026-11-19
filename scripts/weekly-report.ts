@@ -6,10 +6,24 @@ import { prisma } from "../src/db";
 import { buildTelegramSummary, buildWeeklyReport, type FunnelWeek, type ReportInput } from "../src/report/weeklyReport";
 import { latestInspections } from "../src/detectors/annexB";
 import { ORGANIC_CHANNELS } from "../src/detectors/annexB";
+import { isPrivateUrl } from "../src/privacy/sitePrivacy";
 import { sendTelegramMessage } from "../src/alerts/sendTelegramMessage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const GSC_LAG_DAYS = 3;
+const AI_CHANNEL = "AI Assistant";
+
+/** Ruta de una página de entrada pública del sitio; null si es privada, ajena o ilegible. */
+function publicLandingPath(page: string): string | null {
+  if (page.includes("<privada:")) return null;
+  try {
+    const u = new URL(page, "https://miwebdeboda.com");
+    if (!/(^|\.)miwebdeboda\.com$/.test(u.hostname) || isPrivateUrl(u.href)) return null;
+    return u.pathname;
+  } catch {
+    return null;
+  }
+}
 
 async function funnelWeek(from: Date, to: Date): Promise<FunnelWeek> {
   const gsc = await prisma.searchConsolePageDaily.aggregate({
@@ -66,6 +80,24 @@ export async function loadReportInput(now: Date = new Date()): Promise<ReportInp
   });
   const hasBing = (await prisma.bingQueryStat.count()) > 0;
 
+  // Asistentes de IA (GA4). Las páginas de entrada privadas no salen nunca.
+  const aiSum = (from: Date, to: Date) =>
+    prisma.analyticsLandingDaily.aggregate({ where: { channel: AI_CHANNEL, date: { gte: from, lt: to } }, _sum: { sessions: true, keyEvents: true } });
+  const [aiLast, aiPrior] = await Promise.all([aiSum(ago(28), now), aiSum(ago(56), ago(28))]);
+  const aiTop = (
+    await prisma.analyticsLandingDaily.groupBy({
+      by: ["landingPage"],
+      where: { channel: AI_CHANNEL, date: { gte: ago(28) } },
+      _sum: { sessions: true },
+      orderBy: { _sum: { sessions: "desc" } },
+      take: 20,
+    })
+  )
+    .map((r) => ({ path: publicLandingPath(r.landingPage), sessions: r._sum.sessions ?? 0 }))
+    .filter((r): r is { path: string; sessions: number } => r.path !== null)
+    .slice(0, 5);
+  const hasAi = (await prisma.analyticsLandingDaily.count({ where: { channel: AI_CHANNEL } })) > 0;
+
   return {
     generatedAt: now,
     bing: hasBing
@@ -75,6 +107,14 @@ export async function loadReportInput(now: Date = new Date()): Promise<ReportInp
           clicksPrior28: bingPrior._sum.clicks ?? 0,
           impressionsPrior28: bingPrior._sum.impressions ?? 0,
           topQueries: bingTop.map((q) => ({ query: q.query, clicks: q._sum.clicks ?? 0, impressions: q._sum.impressions ?? 0 })),
+        }
+      : null,
+    aiAssistants: hasAi
+      ? {
+          sessions28: aiLast._sum.sessions ?? 0,
+          sessionsPrior28: aiPrior._sum.sessions ?? 0,
+          keyEvents28: Math.round(aiLast._sum.keyEvents ?? 0),
+          topLanding: aiTop.map((r) => ({ page: r.path, sessions: r.sessions })),
         }
       : null,
     funnel: {

@@ -69,3 +69,10 @@ test("la sección de Bing sale solo con datos y compara con los 28 días anterio
   assert.match(md, /## Bing\n\n28 días: 4 clics \(\+100%\) y 300 impresiones \(\+100%\)\./);
   assert.match(md, /«web de boda» 40/);
 });
+
+test("asistentes de IA: sección solo con datos, sin inventar impresiones", () => {
+  assert.ok(!buildWeeklyReport(input()).includes("## Asistentes de IA"));
+  const md = buildWeeklyReport(input({ aiAssistants: { sessions28: 11, sessionsPrior28: 4, keyEvents28: 1, topLanding: [{ page: "/precios", sessions: 5 }] } }));
+  assert.match(md, /## Asistentes de IA\n\n28 días: 11 visitas .*\(\+175%\), 1 conversiones/);
+  assert.match(md, /\/precios 5/);
+});
