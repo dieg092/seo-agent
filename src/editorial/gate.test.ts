@@ -42,8 +42,11 @@ const input = (over: Partial<GateInput> = {}): GateInput => ({
 beforeEach(async () => {
   await prisma.editorialScore.deleteMany({});
   await prisma.editorialCalibration.deleteMany({});
-  await prisma.editorialCalibration.create({ data: { status: "ok", detail: "", references: [] } });
+  await prisma.editorialCalibration.create({ data: OK_CALIBRATION() });
 });
+
+const NOW = new Date("2026-11-18T12:00:00Z");
+const OK_CALIBRATION = () => ({ status: "ok", detail: "", references: [], createdAt: new Date("2026-11-10T00:00:00Z"), validityN: 14, validityRho: 0.35, validityAt: new Date("2026-11-18T11:00:00Z") });
 
 test("aprueba si la rama pasa y mejora a main; la misma versión no se vuelve a evaluar", async () => {
   const run = runner(6, 7.6);
@@ -65,13 +68,38 @@ test("bloquea si no llega a 7 o si casi no mejora", async () => {
 });
 
 test("retiene sin calibración en verde; bloquea si el artículo no es el del contrato o hay dos", async () => {
-  await prisma.editorialCalibration.create({ data: { status: "drift", detail: "", references: [], createdAt: new Date(Date.now() + 1000) } });
+  await prisma.editorialCalibration.create({ data: { status: "drift", detail: "", references: [], createdAt: new Date("2026-11-11T00:00:00Z") } });
   assert.equal((await editorialGate(input())).code, 75);
   await prisma.editorialCalibration.deleteMany({});
-  await prisma.editorialCalibration.create({ data: { status: "ok", detail: "", references: [] } });
+  await prisma.editorialCalibration.create({ data: OK_CALIBRATION() });
   assert.match((await editorialGate(input({ contractUrls: [`${BASE}/blog/organizar-boda/otro`] }))).reason, /no es el del contrato/);
   assert.match((await editorialGate(input({ files: [FILE, "src/lib/blog/content/organizar-boda/otro.ts"] }))).reason, /un solo artículo \(cambia 2\)/);
   assert.equal((await editorialGate(input({ readFile: async () => null }))).code, 1);
+});
+
+test("retiene con la calibración caducada, sin validez reciente, pendiente o en contra de GSC", async () => {
+  const cases: [Record<string, unknown>, RegExp][] = [
+    [{ createdAt: new Date("2026-10-01T00:00:00Z") }, /caducado/],
+    [{ validityAt: new Date("2026-11-15T00:00:00Z") }, /sin validez reciente/],
+    [{ validityN: 10 }, /validez pendiente \(10 de 12/],
+    [{ validityRho: -0.1 }, /no acompaña/],
+  ];
+  for (const [over, re] of cases) {
+    await prisma.editorialCalibration.deleteMany({});
+    await prisma.editorialCalibration.create({ data: { ...OK_CALIBRATION(), ...over } as never });
+    const d = await editorialGate(input());
+    assert.equal(d.code, 75);
+    assert.match(d.reason, re);
+  }
+});
+
+test("la caché depende de main: si main cambia, se vuelve a evaluar", async () => {
+  const run = runner(6, 7.6);
+  assert.equal((await editorialGate(input({ runner: run.r }))).code, 0);
+  assert.equal(run.calls(), 2);
+  const otherMain = src("## Plazos\\n\\nTexto viejo distinto del artículo sobre la fiesta.");
+  await editorialGate(input({ runner: run.r, readFile: async (_p, ref) => (ref === "main" ? otherMain : HEAD) }));
+  assert.equal(run.calls(), 4, "otra base, otra evaluación");
 });
 
 test("markdown del repositorio: texto y hechos", () => {

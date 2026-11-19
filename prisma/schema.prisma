@@ -682,6 +682,9 @@ model EditorialCalibration {
   detail     String
   references Json
   createdAt  DateTime @default(now())
+  validityN   Int?
+  validityRho Float?
+  validityAt  DateTime?
 
   @@index([createdAt])
   @@schema("seo_agent")

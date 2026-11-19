@@ -210,6 +210,10 @@ export async function runEditorial(deps: EditorialDeps = {}): Promise<string[]> 
   }
   // La validez se vuelve a mirar en cada pasada con las notas nuevas: no hace falta esperar al mes.
   const validity = await validityPairs((await loadOutcomes(ctx.base, now)).filter((o) => articles.some((a) => a.slug === o.slug)));
+  await prisma.editorialCalibration.update({
+    where: { id: calibration.id },
+    data: { validityN: validity.length, validityRho: validity.length >= 3 ? spearman(validity) : null, validityAt: now },
+  });
   if (validity.length >= MIN_VALIDITY_N && spearman(validity) < MIN_SPEARMAN) {
     const detail = `correlación nota–GSC ${spearman(validity)} con ${validity.length} artículos`;
     await saveCalibration(now, "inverted", detail, calibration.references as unknown as Reference[]);
