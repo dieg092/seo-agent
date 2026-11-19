@@ -13,7 +13,9 @@ import { recordAlert } from "../alerts/recordAlert";
 import { getPublishedArticleUrls } from "../embeddings/fetchArticleContent";
 import { extractArticle, extractArticleFromMarkdown } from "./article";
 import { DEFECTIVE_ARTICLE, DEFECTIVE_MAX_SCORE, DEFECTIVE_SLUG } from "./fixtures/defective";
-import { batteryDue, runBattery } from "./battery";
+import { batteryDue, stepBattery } from "./battery";
+import { budgetedRunner, orbitaBusy, quotaUntil } from "./budget";
+import { EditorialDeferred } from "./modelErrors";
 import { detectHollow } from "./hollow";
 import { EVALUATOR_MODEL, claudeRunner, evaluateArticle, type Runner } from "./evaluator";
 import { EXCELLENT, RUBRIC_VERSION, combineExcellent, decide } from "./rubric";
@@ -203,7 +205,24 @@ async function saveCalibration(now: Date, status: string, detail: string, refere
 
 export async function runEditorial(deps: EditorialDeps = {}): Promise<string[]> {
   const now = deps.now ?? new Date();
-  const ctx: Ctx = { now, runner: deps.runner ?? claudeRunner, fetchHtml: deps.fetchHtml ?? defaultFetchHtml, base: getEnv("SITE_BASE_URL").replace(/\/$/, "") };
+  if (!deps.runner) {
+    // Con el modelo real: Órbita tiene prioridad y, tras un límite de cupo, nadie llama hasta el reinicio.
+    const q = await quotaUntil(now);
+    if (q) return [`editorial en espera: cupo del modelo hasta ${q.toISOString()}`];
+    if (orbitaBusy()) return ["editorial en espera: Órbita está usando el modelo"];
+  }
+  try {
+    return await editorialPass(deps, now);
+  } catch (e) {
+    if (e instanceof EditorialDeferred) return [`editorial en espera hasta ${e.retryAt.toISOString()}: ${e.message}`];
+    throw e;
+  }
+}
+
+async function editorialPass(deps: EditorialDeps, now: Date): Promise<string[]> {
+  // Todas las llamadas de fondo pasan por el presupuesto diario (budget.ts).
+  const runner = deps.runner ?? budgetedRunner(claudeRunner, "background", () => new Date(), { busy: () => false });
+  const ctx: Ctx = { now, runner, fetchHtml: deps.fetchHtml ?? defaultFetchHtml, base: getEnv("SITE_BASE_URL").replace(/\/$/, "") };
   const notes: string[] = [];
   const articles = (await (deps.listArticles ?? (() => getPublishedArticleUrls({ baseUrl: ctx.base })))()).filter((a) => isArticleSlug(a.slug));
   if (articles.length === 0) return notes;
@@ -235,7 +254,8 @@ export async function runEditorial(deps: EditorialDeps = {}): Promise<string[]> 
 
   // Batería de defectos: al cambiar la configuración, cada 30 días y, si falla, a diario.
   if (await batteryDue(now)) {
-    notes.push(await runBattery(ctx.runner, now, ctx.base));
+    // Batería: con el runner real va con presupuesto y cediendo el paso a Órbita en cada llamada.
+    notes.push(await stepBattery(deps.runner ?? claudeRunner, now, ctx.base, { unbudgeted: Boolean(deps.runner) }));
     return notes;
   }
 

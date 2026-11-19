@@ -1,36 +1,73 @@
 // src/editorial/battery.ts
-// Batería de defectos (plan de Codex, paso 4): la guarda editorial completa, con el modelo real,
-// sobre 20 casos sintéticos con defectos conocidos. Sin una batería aprobada y vigente para la
-// configuración actual (rúbrica, prompt, modelo y reglas de la guarda), la guarda retiene.
-//   - vale BATTERY_MAX_AGE_DAYS días; si cambia la configuración, deja de valer al instante;
-//   - si falla, se reintenta sola cada BATTERY_RETRY_HOURS (la guarda sigue reteniendo).
+// Batería de defectos (planes de Codex, pasos 4 y de eficiencia): la guarda editorial completa,
+// con el modelo real, sobre 20 casos sintéticos con defectos conocidos. Sin una batería aprobada y
+// vigente para la configuración actual (configKey), la guarda retiene.
+//
+// Eficiencia: incremental y reanudable. Cada respuesta del modelo y cada resultado de caso se
+// guardan al momento; una ejecución cortada sigue donde se quedó sin repetir llamadas. Primero los
+// casos deterministas (sin llamadas), luego los críticos y luego el resto, con corte en cuanto un
+// crítico se escapa o ya no se puede llegar al 90 %. Una llamada cada vez, con presupuesto diario.
+//
+// Terminación (ningún reintento es infinito):
+//   - cupo/presupuesto/Órbita ocupada: espera a la hora indicada (no cuenta como fallo); como mucho
+//     MAX_QUOTA_HITS límites de cupo por ejecución;
+//   - errores técnicos: MAX_TRANSIENT seguidos (esperas 1, 2, 4 h);
+//   - una ejecución vive RUN_MAX_DAYS días;
+//   → si se pasa cualquiera: disabled-resource.
+//   - fallos de calidad reales: MAX_QUALITY_ATTEMPTS por configKey (esperas 6 y 12 h) → disabled-quality.
+// Un estado disabled-* es terminal para esa configKey: solo una configuración nueva (rúbrica, prompt,
+// modelo o reglas) vuelve a intentarlo. Nunca se tocan umbrales, rúbrica ni casos automáticamente.
+// Avisa una vez por (configKey, estado). El resto del SEO sigue funcionando.
 import { createHash } from "node:crypto";
 import { prisma } from "../db";
+import { recordAlert } from "../alerts/recordAlert";
 import type { Runner } from "./evaluator";
-import { editorialConfigKey, pairedDecision, scoreVersion } from "./paired";
-import { BASE_ARTICLE, BATTERY_CASES, BATTERY_MIN_RATE, BATTERY_SLUG, BATTERY_VERSION } from "./fixtures/validationCases";
+import { budgetedRunner } from "./budget";
+import { classifyModelError } from "./modelErrors";
+import { deterministicBlock, editorialConfigKey, pairedDecision, scoreVersion, type VersionScore } from "./paired";
+import { BASE_ARTICLE, BATTERY_CASES, BATTERY_MIN_RATE, BATTERY_SLUG, BATTERY_VERSION, type BatteryCase } from "./fixtures/validationCases";
 
 export const BATTERY_MAX_AGE_DAYS = 30;
-export const BATTERY_RETRY_HOURS = 24;
-const CONCURRENCY = 4;
+export const MAX_QUALITY_ATTEMPTS = 3;
+export const QUALITY_BACKOFF_HOURS = [6, 12];
+export const MAX_TRANSIENT = 3;
+export const MAX_QUOTA_HITS = 7;
+export const RUN_MAX_DAYS = 21;
+const HOUR = 3600_000;
+const DAY = 24 * HOUR;
+const TERMINAL = ["disabled-quality", "disabled-resource"];
 
 export const batteryKey = () => createHash("sha256").update(`${BATTERY_VERSION}|${editorialConfigKey()}`).digest("hex").slice(0, 16);
 
-export type BatteryState = { status: "ok"; at: Date } | { status: "missing" | "stale" | "failed"; reason: string };
+export type BatteryState = { status: "ok"; at: Date } | { status: "missing" | "running" | "stale" | "failed" | "disabled"; reason: string };
 
-export async function batteryState(now: Date): Promise<BatteryState> {
-  const last = await prisma.editorialBattery.findFirst({ where: { configKey: batteryKey() }, orderBy: { createdAt: "desc" } });
-  if (!last) return { status: "missing", reason: "falta la batería de defectos para esta configuración" };
-  if (!last.passed) return { status: "failed", reason: `la batería de defectos no pasa (${last.detected}/${last.total}, ${last.criticalMissed} críticos sin detectar)` };
-  if (now.getTime() - last.createdAt.getTime() > BATTERY_MAX_AGE_DAYS * 86400_000) return { status: "stale", reason: "la batería de defectos ha caducado" };
-  return { status: "ok", at: last.createdAt };
+async function terminalRun(key: string) {
+  return prisma.editorialBatteryRun.findFirst({ where: { configKey: key, status: { in: TERMINAL } }, orderBy: { createdAt: "desc" } });
 }
 
+export async function batteryState(now: Date): Promise<BatteryState> {
+  const key = batteryKey();
+  const dead = await terminalRun(key);
+  if (dead) return { status: "disabled", reason: `IA editorial desactivada para esta configuración (${dead.status === "disabled-quality" ? "la batería de defectos no pasa" : "no hay recursos para terminar la batería"})` };
+  const last = await prisma.editorialBattery.findFirst({ where: { configKey: key }, orderBy: { createdAt: "desc" } });
+  if (last?.passed && now.getTime() - last.createdAt.getTime() <= BATTERY_MAX_AGE_DAYS * DAY) return { status: "ok", at: last.createdAt };
+  const running = await prisma.editorialBatteryRun.findFirst({ where: { configKey: key, status: "running" } });
+  if (running) return { status: "running", reason: "la batería de defectos está en curso" };
+  if (!last) return { status: "missing", reason: "falta la batería de defectos para esta configuración" };
+  if (!last.passed) return { status: "failed", reason: `la batería de defectos no pasa (${last.detected}/${last.total}, ${last.criticalMissed} críticos sin detectar)` };
+  return { status: "stale", reason: "la batería de defectos ha caducado" };
+}
+
+/** ¿Hay trabajo de batería que hacer ya? (sin llamar al modelo) */
 export async function batteryDue(now: Date): Promise<boolean> {
-  const last = await prisma.editorialBattery.findFirst({ where: { configKey: batteryKey() }, orderBy: { createdAt: "desc" } });
-  if (!last) return true;
-  const age = now.getTime() - last.createdAt.getTime();
-  return last.passed ? age > BATTERY_MAX_AGE_DAYS * 86400_000 : age > BATTERY_RETRY_HOURS * 3600_000;
+  const key = batteryKey();
+  if (await terminalRun(key)) return false;
+  const running = await prisma.editorialBatteryRun.findFirst({ where: { configKey: key, status: "running" } });
+  if (running) return !running.nextAttemptAt || running.nextAttemptAt <= now;
+  const lastPass = await prisma.editorialBattery.findFirst({ where: { configKey: key, passed: true }, orderBy: { createdAt: "desc" } });
+  if (lastPass && now.getTime() - lastPass.createdAt.getTime() <= BATTERY_MAX_AGE_DAYS * DAY) return false;
+  const lastFail = await prisma.editorialBatteryRun.findFirst({ where: { configKey: key, status: "failed-quality" }, orderBy: { createdAt: "desc" } });
+  return !lastFail?.nextAttemptAt || lastFail.nextAttemptAt <= now;
 }
 
 /** La batería pasa si detecta todos los críticos y al menos BATTERY_MIN_RATE del total. */
@@ -40,24 +77,143 @@ export function batteryPasses(results: { critical: boolean; detected: boolean }[
   return { passed: criticalMissed === 0 && detected / results.length >= BATTERY_MIN_RATE, detected, criticalMissed };
 }
 
-export async function runBattery(runner: Runner, now: Date, siteBase: string): Promise<string> {
+/** ¿Ya está decidido sin evaluar el resto? */
+export function earlyVerdict(done: { critical: boolean; detected: boolean }[], total: number): "failed" | null {
+  if (done.some((r) => r.critical && !r.detected)) return "failed";
+  const missed = done.filter((r) => !r.detected).length;
+  return (total - missed) / total < BATTERY_MIN_RATE ? "failed" : null;
+}
+
+/** Orden: críticos primero (por tipo), luego el resto. */
+export function modelOrder(cases: BatteryCase[]): BatteryCase[] {
+  return [...cases.filter((c) => c.critical), ...cases.filter((c) => !c.critical)];
+}
+
+async function alertOnce(key: string, state: string, body: string, alert: typeof recordAlert) {
+  const subject = `IA editorial desactivada (${state}, configuración ${key.slice(0, 8)})`;
+  if (await prisma.alert.findFirst({ where: { type: "editorial-disabled", subject } })) return;
+  for (let i = 0; i < 3; i++) {
+    try {
+      await alert({ type: "editorial-disabled", subject, body });
+      return;
+    } catch {
+      // se reintenta la entrega; si no, se sigue sin bloquear
+    }
+  }
+}
+
+/** Runner que guarda cada respuesta: una ejecución cortada no vuelve a pedirla. */
+function persistent(runId: string, caseId: string, side: string, inner: Runner): Runner {
+  let i = 0;
+  return async (req) => {
+    const sampleIndex = i++;
+    const saved = await prisma.editorialBatterySample.findUnique({ where: { runId_caseId_side_sampleIndex: { runId, caseId, side, sampleIndex } } });
+    if (saved) return saved.raw as never;
+    const raw = await inner(req);
+    await prisma.editorialBatterySample.create({ data: { runId, caseId, side, sampleIndex, raw: raw as object } });
+    return raw;
+  };
+}
+
+export interface BatteryDeps {
+  alert?: typeof recordAlert;
+  busy?: () => boolean;
+  /** Para los tests: un runner sin presupuesto. */
+  unbudgeted?: boolean;
+}
+
+/** Un paso de la batería: avanza lo que pueda y devuelve una nota. Idempotente. */
+export async function stepBattery(runner: Runner, now: Date, siteBase: string, deps: BatteryDeps = {}): Promise<string> {
+  const alert = deps.alert ?? recordAlert;
+  const key = batteryKey();
+  const dead = await terminalRun(key);
+  if (dead) return `batería de defectos: desactivada (${dead.status}); solo se reintenta con otra configuración`;
+
+  let run = await prisma.editorialBatteryRun.findFirst({ where: { configKey: key, status: "running" } });
+  if (!run) {
+    const lastPass = await prisma.editorialBatteryRun.findFirst({ where: { configKey: key, status: "passed" }, orderBy: { createdAt: "desc" } });
+    const fails = await prisma.editorialBatteryRun.findMany({ where: { configKey: key, status: "failed-quality", createdAt: { gt: lastPass?.createdAt ?? new Date(0) } }, orderBy: { createdAt: "desc" } });
+    if (fails[0]?.nextAttemptAt && fails[0].nextAttemptAt > now) return `batería de defectos: siguiente intento a partir de ${fails[0].nextAttemptAt.toISOString()}`;
+    run = await prisma.editorialBatteryRun.create({ data: { configKey: key, attempt: fails.length + 1, status: "running", startedAt: now } });
+  }
+  if (run.nextAttemptAt && run.nextAttemptAt > now) return `batería de defectos: en espera hasta ${run.nextAttemptAt.toISOString()}`;
+  const runId = run.id;
+  const disable = async (why: string) => {
+    await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { status: "disabled-resource", finishedAt: now, detail: { why } } });
+    await alertOnce(key, "disabled-resource", `La batería de defectos no se puede terminar (${why}). La IA editorial queda desactivada para esta configuración; las mejoras de artículos no se fusionan y el resto del SEO sigue. Se vuelve a intentar sola si cambia el modelo, la rúbrica, el prompt o las reglas.`, alert);
+    return `batería de defectos: desactivada (${why})`;
+  };
+  if (now.getTime() - run.startedAt.getTime() > RUN_MAX_DAYS * DAY) return disable(`${RUN_MAX_DAYS} días sin terminar`);
+
+  const results = async () => prisma.editorialBatteryCaseResult.findMany({ where: { runId } });
+  const record = async (c: BatteryCase, detected: boolean, reason: string) =>
+    prisma.editorialBatteryCaseResult.upsert({ where: { runId_caseId: { runId, caseId: c.id } }, create: { runId, caseId: c.id, critical: c.critical, detected, reason }, update: {} });
+
+  // 1. Deterministas: sin llamadas.
+  const doneIds = new Set((await results()).map((r) => r.caseId));
+  for (const c of BATTERY_CASES) {
+    if (doneIds.has(c.id)) continue;
+    const blocked = deterministicBlock(BASE_ARTICLE, c.head, c.id);
+    if (blocked) await record(c, true, blocked);
+  }
+
+  const finish = async (): Promise<string> => {
+    const rs = await results();
+    const verdict = batteryPasses(rs);
+    const complete = rs.length === BATTERY_CASES.length;
+    const passed = complete && verdict.passed;
+    const base = (await prisma.editorialBatterySample.findMany({ where: { runId, caseId: "__base__" } })).length;
+    await prisma.editorialBattery.create({
+      data: { configKey: key, passed, detected: verdict.detected, total: BATTERY_CASES.length, criticalMissed: verdict.criticalMissed, detail: { runId, baseSamples: base, results: rs.map((r) => ({ id: r.caseId, critical: r.critical, detected: r.detected, reason: r.reason })) } as object, createdAt: now },
+    });
+    const missed = rs.filter((r) => !r.detected).map((r) => r.caseId);
+    if (passed) {
+      await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { status: "passed", finishedAt: now } });
+      return `batería de defectos: pasa (${verdict.detected}/${BATTERY_CASES.length})`;
+    }
+    if (run!.attempt >= MAX_QUALITY_ATTEMPTS) {
+      await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { status: "disabled-quality", finishedAt: now } });
+      await alertOnce(key, "disabled-quality", `La batería de defectos ha fallado ${MAX_QUALITY_ATTEMPTS} veces con esta configuración (se le escapan: ${missed.join(", ")}). La IA editorial queda desactivada: las mejoras de artículos no se fusionan y el resto del SEO sigue. No se cambian umbrales ni casos; se vuelve a intentar sola si cambia el modelo, la rúbrica, el prompt o las reglas.`, alert);
+      return `batería de defectos: no pasa por ${MAX_QUALITY_ATTEMPTS}.ª vez, IA editorial desactivada`;
+    }
+    const wait = QUALITY_BACKOFF_HOURS[run!.attempt - 1] * HOUR;
+    await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { status: "failed-quality", finishedAt: now, nextAttemptAt: new Date(now.getTime() + wait) } });
+    return `batería de defectos: no pasa (intento ${run!.attempt}/${MAX_QUALITY_ATTEMPTS}; se le escapan: ${missed.join(", ")})`;
+  };
+
+  const rs0 = await results();
+  if (earlyVerdict(rs0, BATTERY_CASES.length) || rs0.length === BATTERY_CASES.length) return finish();
+
+  // 2. Con el modelo: críticos primero, una llamada cada vez, todo guardado al momento.
+  const model = deps.unbudgeted ? runner : budgetedRunner(runner, "background", () => now, { busy: deps.busy });
   const url = `${siteBase}/blog/${BATTERY_SLUG}`;
-  const base = await scoreVersion({ url, md: BASE_ARTICLE, siteBase, runner }, "base");
-  const results: { id: string; kind: string; critical: boolean; detected: boolean; reason: string }[] = [];
-  const queue = [...BATTERY_CASES];
-  await Promise.all(
-    Array.from({ length: CONCURRENCY }, async () => {
-      for (let c = queue.shift(); c; c = queue.shift()) {
-        const d = await pairedDecision({ url, label: c.id, baseMd: BASE_ARTICLE, headMd: c.head, siteBase, runner, base });
-        results.push({ id: c.id, kind: c.kind, critical: c.critical, detected: !d.approve, reason: d.reason });
-      }
-    }),
-  );
-  results.sort((a, b) => a.id.localeCompare(b.id));
-  const r = batteryPasses(results);
-  await prisma.editorialBattery.create({
-    data: { configKey: batteryKey(), passed: r.passed, detected: r.detected, total: results.length, criticalMissed: r.criticalMissed, detail: { base: base.score, results } as object, createdAt: now },
-  });
-  const missed = results.filter((x) => !x.detected).map((x) => x.id);
-  return `batería de defectos: ${r.passed ? "pasa" : "no pasa"} (${r.detected}/${results.length}${missed.length ? `; se le escapan: ${missed.join(", ")}` : ""})`;
+  try {
+    const base: VersionScore = await scoreVersion({ url, md: BASE_ARTICLE, siteBase, runner: persistent(runId, "__base__", "base", model) }, "base");
+    for (const c of modelOrder(BATTERY_CASES)) {
+      if ((await results()).some((r) => r.caseId === c.id)) continue;
+      const d = await pairedDecision({ url, label: c.id, baseMd: BASE_ARTICLE, headMd: c.head, siteBase, runner: persistent(runId, c.id, "head", model), base });
+      await record(c, !d.approve, d.reason);
+      if (run.transientFails > 0) run = await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { transientFails: 0 } });
+      if (earlyVerdict(await results(), BATTERY_CASES.length)) return finish();
+    }
+  } catch (e) {
+    const c = classifyModelError(e, now);
+    if (c.kind === "budget" || c.kind === "busy") {
+      await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { nextAttemptAt: c.retryAt } });
+      return `batería de defectos: en pausa hasta ${c.retryAt!.toISOString()} (${c.kind === "busy" ? "Órbita usa el modelo" : "presupuesto de hoy gastado"})`;
+    }
+    if (c.kind === "quota") {
+      const hits = run.quotaHits + 1;
+      if (hits > MAX_QUOTA_HITS) return disable(`${hits} límites de cupo en la misma ejecución`);
+      await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { quotaHits: hits, nextAttemptAt: c.retryAt } });
+      return `batería de defectos: cupo del modelo agotado, sigue a partir de ${c.retryAt!.toISOString()}`;
+    }
+    if (c.kind === "permanent-model-error") return disable("el modelo no está disponible");
+    const fails = run.transientFails + 1;
+    if (fails > MAX_TRANSIENT) return disable(`${fails} errores técnicos seguidos`);
+    const retryAt = new Date(now.getTime() + 2 ** (fails - 1) * HOUR);
+    await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { transientFails: fails, nextAttemptAt: retryAt } });
+    return `batería de defectos: error técnico (${c.kind}, ${fails}/${MAX_TRANSIENT}), reintento a partir de ${retryAt.toISOString()}`;
+  }
+  return finish();
 }

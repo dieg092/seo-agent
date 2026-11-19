@@ -4,6 +4,9 @@
 // (porcentaje, euros, «N de cada M», plazos) que no estuviera ya en main bloquea, lleve o no un
 // enlace al lado (un enlace cualquiera no demuestra que la fuente diga eso). Es determinista.
 
+/** Cambia si cambian las reglas de cifras: invalida la batería y la caché de la guarda. */
+export const CLAIMS_VERSION = "claims-v2";
+
 const NUM_WORD = "(?:un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|mil)";
 const FIGURE = new RegExp(
   [

@@ -58,6 +58,8 @@ beforeEach(async () => {
   await prisma.editorialScore.deleteMany({});
   await prisma.editorialCalibration.deleteMany({});
   await prisma.editorialBattery.deleteMany({});
+  await prisma.editorialBatteryRun.deleteMany({});
+  await prisma.editorialBudget.deleteMany({});
   await prisma.editorialPilot.deleteMany({});
   await prisma.seoChange.deleteMany({});
   await prisma.alert.deleteMany({ where: { type: "editorial-pilot-report" } });

@@ -15,6 +15,8 @@ beforeEach(async () => {
   await prisma.editorialScore.deleteMany({});
   await prisma.editorialCalibration.deleteMany({});
   await prisma.editorialBattery.deleteMany({});
+  await prisma.editorialBatteryRun.deleteMany({});
+  await prisma.editorialBudget.deleteMany({});
   // batería aprobada y vigente: estos tests miran la calibración y la evaluación rutinaria
   await prisma.editorialBattery.create({ data: { configKey: batteryKey(), passed: true, detected: 20, total: 20, criticalMissed: 0, detail: {}, createdAt: NOW } });
   await prisma.alert.deleteMany({ where: { type: { startsWith: "editorial-" } } });

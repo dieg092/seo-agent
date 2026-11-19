@@ -17,6 +17,8 @@ import { BLOCK, HOLD, guardDecision, type GuardStage, type PullRequestInfo } fro
 import { parseNumstat, type DiffFile } from "../src/bridge/scopeCheck";
 import { editorialGate } from "../src/editorial/gate";
 import { claudeRunner } from "../src/editorial/evaluator";
+import { budgetedRunner } from "../src/editorial/budget";
+import { EditorialDeferred } from "../src/editorial/modelErrors";
 import { getEnv } from "../src/env";
 
 const SELF = join(__dirname, "..");
@@ -76,7 +78,43 @@ function readPullRequest(url: string): (PullRequestInfo & { repo: string; headSh
   }
 }
 
+/** Tope de errores técnicos seguidos de la guarda premerge por tarea (esperas 1, 2 y 4 h). */
+export const MAX_GUARD_ERRORS = 3;
+
 async function main(): Promise<number> {
+  const [stage, taskId] = process.argv.slice(2) as [GuardStage, string];
+  if (stage !== "premerge" || !taskId) return check();
+  // premerge: con espera tras un error técnico y tope de errores (ningún reintento infinito).
+  const now = new Date();
+  const link = await prisma.seoTaskLink.findUnique({ where: { orbitaTaskId: taskId } }).catch(() => null);
+  if (link?.guardRetryAt && link.guardRetryAt > now) {
+    console.log(`la guarda reintenta a partir de ${link.guardRetryAt.toISOString()} (error técnico anterior)`);
+    return HOLD;
+  }
+  try {
+    const code = await check();
+    if (link && link.guardErrors > 0) await prisma.seoTaskLink.update({ where: { id: link.id }, data: { guardErrors: 0, guardRetryAt: null } }).catch(() => {});
+    return code;
+  } catch (e) {
+    if (e instanceof EditorialDeferred) {
+      console.log(`IA editorial en espera hasta ${e.retryAt.toISOString()}: ${e.message}`);
+      return HOLD;
+    }
+    if (!link) throw e;
+    const n = link.guardErrors + 1;
+    if (n >= MAX_GUARD_ERRORS) {
+      await prisma.seoTaskLink.update({ where: { id: link.id }, data: { guardErrors: n, guardRetryAt: null } }).catch(() => {});
+      console.log(`la guarda ha fallado ${n} veces seguidas por errores técnicos: ${(e as Error).message.slice(0, 150)}`);
+      return BLOCK;
+    }
+    const retryAt = new Date(now.getTime() + 2 ** (n - 1) * 3600_000);
+    await prisma.seoTaskLink.update({ where: { id: link.id }, data: { guardErrors: n, guardRetryAt: retryAt } }).catch(() => {});
+    console.log(`error técnico de la guarda (${n}/${MAX_GUARD_ERRORS}), reintento a partir de ${retryAt.toISOString()}: ${(e as Error).message.slice(0, 150)}`);
+    return HOLD;
+  }
+}
+
+async function check(): Promise<number> {
   const [stage, taskId, target] = process.argv.slice(2) as [GuardStage, string, string | undefined];
   if (!["preflight", "scope", "premerge"].includes(stage) || !taskId || (stage !== "preflight" && !target)) {
     console.log("uso: seo-guard-check.ts preflight <taskId> | scope <taskId> <dir> | premerge <taskId> <prUrl>");
@@ -149,7 +187,8 @@ async function main(): Promise<number> {
           return null;
         }
       },
-      runner: claudeRunner,
+      // presupuesto propio de las guardas: no compite con la batería ni con las evaluaciones de fondo
+      runner: budgetedRunner(claudeRunner, "guard"),
       now: new Date(),
       orbitaTaskId: link.orbitaTaskId,
     });

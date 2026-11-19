@@ -11,8 +11,8 @@
 import { createHash } from "node:crypto";
 import { extractArticleFromMarkdown } from "./article";
 import { detectHollow } from "./hollow";
-import { EVALUATOR_MODEL, SYSTEM_PROMPT, evaluateArticle, type Evaluation, type Runner } from "./evaluator";
-import { unsourcedNewFigures } from "./claims";
+import { EVALUATOR_MODEL, SYSTEM_PROMPT, evaluateArticle, evaluationSchema, type Evaluation, type Runner } from "./evaluator";
+import { CLAIMS_VERSION, unsourcedNewFigures } from "./claims";
 import { APPROVE_MIN, CRITERION_FLOOR, CRITERION_KEYS, RUBRIC_VERSION, type CriterionKey } from "./rubric";
 
 export const GATE_VERSION = "gate-v3";
@@ -25,7 +25,8 @@ const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 
 /** Todo lo que cambia una decisión: si cambia, la batería y la caché dejan de valer. */
 export function editorialConfigKey(): string {
-  return hash([GATE_VERSION, RUBRIC_VERSION, hash(SYSTEM_PROMPT), EVALUATOR_MODEL, MIN_IMPROVEMENT, DISAGREEMENT, CRITICAL.join(","), CRITICAL_MAX_DROP].join("|")).slice(0, 16);
+  // también las reglas deterministas (fuente de claims.ts vía su versión) y el esquema de respuesta
+  return hash([GATE_VERSION, CLAIMS_VERSION, hash(JSON.stringify(evaluationSchema)), RUBRIC_VERSION, hash(SYSTEM_PROMPT), EVALUATOR_MODEL, MIN_IMPROVEMENT, DISAGREEMENT, CRITICAL.join(","), CRITICAL_MAX_DROP].join("|")).slice(0, 16);
 }
 
 export interface VersionScore {
@@ -41,7 +42,8 @@ export async function scoreVersion(input: { url: string; md: string; siteBase: s
   const doc = extractArticleFromMarkdown(input.md, input.siteBase);
   const hollow = detectHollow(doc.text);
   const once = () => evaluateArticle({ url: input.url, doc, hollow, similar: [] }, input.runner);
-  const evals = await Promise.all([once(), once()]);
+  // en serie: una sola llamada al modelo a la vez (cupo compartido con Órbita)
+  const evals = [await once(), await once()];
   if (Math.abs(evals[0].score - evals[1].score) > DISAGREEMENT) {
     evals.push(await once());
     return { score: round(median(evals.map((e) => e.score))), evals };
@@ -61,14 +63,19 @@ export interface PairedDecision {
   evaluated: boolean;
 }
 
+/** Parte determinista de la decisión (sin llamadas): un motivo de bloqueo o null. */
+export function deterministicBlock(baseMd: string, headMd: string, label: string): string | null {
+  const unsourced = unsourcedNewFigures(baseMd, headMd);
+  if (unsourced.length === 0) return null;
+  return `bloquea: ${label} añade cifras que no estaban en main (${unsourced.slice(0, 3).map((u) => u.figure).join(", ")})`;
+}
+
 export async function pairedDecision(input: { url: string; label: string; baseMd: string; headMd: string; siteBase: string; runner: Runner; base?: VersionScore }): Promise<PairedDecision> {
-  const unsourced = unsourcedNewFigures(input.baseMd, input.headMd);
-  if (unsourced.length > 0) {
-    const list = unsourced.slice(0, 3).map((u) => u.figure).join(", ");
-    return { approve: false, reason: `bloquea: ${input.label} añade cifras que no estaban en main (${list})`, base: null, head: null, gain: null, evaluated: false };
-  }
+  const blocked = deterministicBlock(input.baseMd, input.headMd, input.label);
+  if (blocked) return { approve: false, reason: blocked, base: null, head: null, gain: null, evaluated: false };
   const common = { url: input.url, siteBase: input.siteBase, runner: input.runner };
-  const [base, head] = await Promise.all([input.base ? Promise.resolve(input.base) : scoreVersion({ ...common, md: input.baseMd }, "base"), scoreVersion({ ...common, md: input.headMd }, "head")]);
+  const base = input.base ?? (await scoreVersion({ ...common, md: input.baseMd }, "base"));
+  const head = await scoreVersion({ ...common, md: input.headMd }, "head");
   const gain = round(head.score - base.score);
   const out = (approve: boolean, reason: string): PairedDecision => ({ approve, reason, base, head, gain, evaluated: true });
 

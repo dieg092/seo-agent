@@ -33,6 +33,12 @@ class FakeOrbita implements OrbitaClient {
     t.status = "cancelled";
     return true;
   }
+  async cancelIfInProgress(id: string) {
+    const t = this.tasks.get(id);
+    if (!t || t.status !== "in_progress") return false;
+    t.status = "cancelled";
+    return true;
+  }
 }
 
 function key(n: number): string {
@@ -164,7 +170,10 @@ test("fase 4: una tarea automática al día; el resto de candidatos automáticos
   assert.equal((await runBridge({ orbita, now: new Date(NOW.getTime() + DAY + 60_000) })).created, 1);
 });
 
-test("mejora de artículo automática: solo se crea si el piloto editorial tiene plaza", async () => {
+test("mejora de artículo automática: solo se crea con la batería aprobada y plaza en el piloto editorial", async () => {
+  const { batteryKey } = await import("../editorial/battery");
+  await prisma.editorialBattery.deleteMany({});
+  await prisma.editorialBatteryRun.deleteMany({});
   await prisma.editorialPilot.deleteMany({});
   await prisma.editorialPilot.createMany({
     data: [
@@ -177,10 +186,50 @@ test("mejora de artículo automática: solo se crea si el piloto editorial tiene
   assert.equal((await runBridge({ orbita, now: NOW })).created, 0, "piloto lleno: el hallazgo espera");
   assert.equal(await prisma.opportunity.count({ where: { sourceRefId: `${PREFIX}1`, state: "open" } }), 1);
   await prisma.editorialPilot.update({ where: { orbitaTaskId: "p1" }, data: { state: "positive", closedAt: NOW } });
+  assert.equal((await runBridge({ orbita, now: new Date(NOW.getTime() + 30_000) })).created, 0, "sin batería aprobada tampoco");
+  await prisma.editorialBattery.create({ data: { configKey: batteryKey(), passed: true, detected: 20, total: 20, criticalMissed: 0, detail: {}, createdAt: NOW } });
   const r = await runBridge({ orbita, now: new Date(NOW.getTime() + 60_000) });
   assert.equal(r.created, 1);
   assert.equal([...orbita.tasks.values()][0].auto, true);
   await prisma.editorialPilot.deleteMany({});
+  await prisma.editorialBattery.deleteMany({});
+});
+
+test("tareas automáticas atascadas: con el PR abierto 30 días, o mejoras de artículos con la IA editorial desactivada, se cancelan (no cuentan para el freno) y se cierra su PR", async () => {
+  const { batteryKey } = await import("../editorial/battery");
+  await prisma.editorialBatteryRun.deleteMany({});
+  const orbita = new FakeOrbita();
+  const closed: string[] = [];
+  const closePr = async (id8: string) => void closed.push(id8);
+  const mk = async (n: number, operation: string, ageDays: number) => {
+    const opp = await seed(n, { operation, stableKey: key(n), sourceRefId: `${PREFIX}${n}`, state: "in_progress" });
+    const t = await orbita.add({ title: "x", description: "x", priority: "high", labels: ["seo"], metadataFile: __filename, dedupeKey: `d${n}`, aiPrompt: "p", auto: true });
+    orbita.tasks.get(t.id)!.status = "in_progress";
+    await prisma.seoTaskLink.create({
+      data: {
+        opportunityId: opp.id, stableKey: opp.stableKey, orbitaTaskId: t.id, findingType: opp.findingType, operation, page: opp.page, lane: "content", autonomy: "A1",
+        contract: { autonomy: "A1", operation, publishPolicy: "auto-merge-if-green" }, taskStatus: "in_progress",
+        expiresAt: new Date(NOW.getTime() + 30 * DAY), createdAt: new Date(NOW.getTime() - ageDays * DAY),
+      },
+    });
+    return t.id;
+  };
+  const old = await mk(1, "meta-title-description", 31);
+  const young = await mk(2, "meta-title-description", 3);
+  const article = await mk(3, "content-improve", 3);
+  await runBridge({ orbita, now: NOW, closePr });
+  assert.equal(orbita.tasks.get(old)!.status, "cancelled");
+  assert.equal(orbita.tasks.get(young)!.status, "in_progress");
+  assert.equal(orbita.tasks.get(article)!.status, "in_progress", "la IA editorial no está desactivada");
+  await prisma.editorialBatteryRun.create({ data: { configKey: batteryKey(), attempt: 3, status: "disabled-quality", startedAt: NOW } });
+  await runBridge({ orbita, now: new Date(NOW.getTime() + 60_000), closePr });
+  assert.equal(orbita.tasks.get(article)!.status, "cancelled");
+  assert.deepEqual(closed.sort(), [old.slice(0, 8), article.slice(0, 8)].sort());
+  await runBridge({ orbita, now: new Date(NOW.getTime() + 120_000), closePr });
+  const o = await prisma.opportunity.findUniqueOrThrow({ where: { stableKey: key(1) } });
+  assert.equal(o.state, "dismissed", "no se vuelve a crear para la misma clave");
+  assert.equal((await prisma.seoControl.findUnique({ where: { id: "global" } }))?.brakeState ?? "off", "off");
+  await prisma.editorialBatteryRun.deleteMany({});
 });
 
 test("fase 4: una propuesta A1 automática sin empezar se sustituye por tarea automática", async () => {

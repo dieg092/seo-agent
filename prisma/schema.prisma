@@ -473,6 +473,9 @@ model SeoTaskLink {
   closedAt      DateTime?
   // done, cancelled, expired, resolved o missing
   closeReason   String?
+  // errores técnicos seguidos de la guarda premerge y cuándo se puede volver a intentar
+  guardErrors   Int       @default(0)
+  guardRetryAt  DateTime?
 
   @@index([stableKey])
   @@index([closedAt])
@@ -752,5 +755,64 @@ model EditorialCalibration {
   validityAt  DateTime?
 
   @@index([createdAt])
+  @@schema("seo_agent")
+}
+
+/// Una ejecución (intento) de la batería de defectos: se reanuda donde se quedó.
+model EditorialBatteryRun {
+  id             String    @id @default(uuid())
+  configKey      String
+  attempt        Int
+  // running | passed | failed-quality | disabled-quality | disabled-resource
+  status         String
+  startedAt      DateTime
+  finishedAt     DateTime?
+  // no se llama al modelo antes de esto (cupo, backoff o espera entre intentos)
+  nextAttemptAt  DateTime?
+  quotaHits      Int       @default(0)
+  transientFails Int       @default(0)
+  detail         Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([configKey, createdAt])
+  @@schema("seo_agent")
+}
+
+/// Respuesta del modelo guardada: una ejecución interrumpida no vuelve a pedirla.
+model EditorialBatterySample {
+  id          String   @id @default(uuid())
+  runId       String
+  caseId      String
+  side        String
+  sampleIndex Int
+  raw         Json
+  createdAt   DateTime @default(now())
+
+  @@unique([runId, caseId, side, sampleIndex])
+  @@schema("seo_agent")
+}
+
+model EditorialBatteryCaseResult {
+  id        String   @id @default(uuid())
+  runId     String
+  caseId    String
+  critical  Boolean
+  detected  Boolean
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@unique([runId, caseId])
+  @@schema("seo_agent")
+}
+
+/// Presupuesto diario de llamadas editoriales (día de Madrid) y espera global por cupo.
+model EditorialBudget {
+  day        String   @id
+  background Int      @default(0)
+  guard      Int      @default(0)
+  quotaUntil DateTime?
+  updatedAt  DateTime @updatedAt
+
   @@schema("seo_agent")
 }

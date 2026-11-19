@@ -15,7 +15,8 @@ import { semanticScope } from "../src/bridge/semanticScope";
 import { containsPrivate } from "../src/privacy/outboundPolicy";
 import { CALIBRATION_MAX_AGE_DAYS } from "../src/editorial/gate";
 import { MIN_VALIDITY_N } from "../src/editorial/calibration";
-import { batteryState } from "../src/editorial/battery";
+import { batteryKey, batteryState } from "../src/editorial/battery";
+import { EDITORIAL_DAILY_BACKGROUND, EDITORIAL_DAILY_GUARD, budgetToday } from "../src/editorial/budget";
 import { PILOT_MAX_OPEN, pilotHasRoom } from "../src/editorial/pilot";
 import { NO_DEPLOY_ALERT_HOURS } from "../src/graduation/changeLedger";
 
@@ -74,7 +75,16 @@ async function main(): Promise<number> {
     add("editorial", "diagnóstico nota–GSC entre artículos (no autoriza)", "info", `n=${n}/${MIN_VALIDITY_N}, ρ=${cal.validityRho ?? "indefinido"}`);
   }
   const battery = await batteryState(new Date(now));
-  add("editorial", "batería de defectos aprobada y vigente", battery.status === "ok" ? "pass" : battery.status === "missing" ? "pending" : "fail", battery.status === "ok" ? `del ${battery.at.toISOString().slice(0, 10)}` : battery.reason);
+  const run = await prisma.editorialBatteryRun.findFirst({ where: { configKey: batteryKey(), status: "running" } });
+  const progress = run ? `${await prisma.editorialBatteryCaseResult.count({ where: { runId: run.id } })}/20 casos, intento ${run.attempt}, ${run.quotaHits} límites de cupo, ${run.transientFails} errores seguidos${run.nextAttemptAt ? `, sigue a partir de ${run.nextAttemptAt.toISOString()}` : ""}` : "";
+  add(
+    "editorial",
+    "batería de defectos aprobada y vigente",
+    battery.status === "ok" ? "pass" : battery.status === "missing" || battery.status === "running" ? "pending" : "fail",
+    battery.status === "ok" ? `del ${battery.at.toISOString().slice(0, 10)}` : `${battery.reason}${progress ? ` (${progress})` : ""}`,
+  );
+  const budget = await budgetToday(new Date(now));
+  add("editorial", "presupuesto de llamadas de hoy", "info", `fondo ${budget.background}/${EDITORIAL_DAILY_BACKGROUND}, guardas ${budget.guard}/${EDITORIAL_DAILY_GUARD}${budget.quotaUntil ? `, cupo agotado hasta ${budget.quotaUntil.toISOString()}` : ""}`);
   const pilots = await prisma.editorialPilot.groupBy({ by: ["state"], _count: true });
   const open = pilots.filter((p) => ["reserved", "observing"].includes(p.state)).reduce((x, p) => x + p._count, 0);
   const room = await pilotHasRoom(new Date(now));

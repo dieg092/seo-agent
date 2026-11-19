@@ -30,6 +30,8 @@ export interface OrbitaClient {
   }): Promise<{ id: string; created: boolean }>;
   comment(id: string, text: string): Promise<void>;
   cancelIfTodo(id: string, reason: string): Promise<boolean>;
+  /** Cancela una tarea empezada (p. ej., con el PR retenido demasiado tiempo); solo si sigue en curso. */
+  cancelIfInProgress(id: string, reason: string): Promise<boolean>;
 }
 
 function run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -85,6 +87,11 @@ export const orbitaCli: OrbitaClient = {
   },
   async cancelIfTodo(id, reason) {
     const r = await run(["cancel", id, "--if-status", "todo", "--motivo", reason, "--json"]);
+    if (r.code !== 0) throw new Error(`orbita cancel ${id}: ${(r.stderr || r.stdout).slice(0, 300)}`);
+    return (lastJsonLine(r.stdout) as { cancelled: boolean }).cancelled;
+  },
+  async cancelIfInProgress(id, reason) {
+    const r = await run(["cancel", id, "--if-status", "in_progress", "--motivo", reason, "--json"]);
     if (r.code !== 0) throw new Error(`orbita cancel ${id}: ${(r.stderr || r.stdout).slice(0, 300)}`);
     return (lastJsonLine(r.stdout) as { cancelled: boolean }).cancelled;
   },

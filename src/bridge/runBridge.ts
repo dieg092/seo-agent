@@ -14,6 +14,7 @@ import { InvalidTransitionError, transition, type LifecycleEvent } from "../oppo
 import { lifecycleData, lifecycleOf } from "../prioritization/prioritize";
 import { dismissalValue, type PriorityFactors } from "../prioritization/priority";
 import { pilotHasRoom } from "../editorial/pilot";
+import { batteryState } from "../editorial/battery";
 import { AUTO_DAILY_CAP, buildContract, isAutoCandidate, promoteToAuto, renderDescription, renderPrompt, taskTitle, validateContract, type SeoTaskContract } from "./contract";
 import { expiryReason, planCreations, reconcile, type TaskStatus } from "./plan";
 import { orbitaCli, type OrbitaClient } from "./orbitaCli";
@@ -62,7 +63,20 @@ async function applyEvents(opportunityId: string, events: LifecycleEvent["type"]
   await prisma.opportunity.update({ where: { id: opportunityId }, data: lifecycleData(lc) });
 }
 
-export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRun?: boolean } = {}): Promise<BridgeResult> {
+/** Una tarea automática con el PR abierto más de esto se cierra (no se retiene para siempre). */
+export const AUTO_TASK_MAX_DAYS = 30;
+
+/** Cierra el PR seo(<id8>) abierto en la app, con un comentario. */
+export type ClosePr = (id8: string, reason: string) => Promise<void>;
+const APP_REPO = "dieg092/wedding-invite-2";
+export const ghClosePr: ClosePr = async (id8, reason) => {
+  const { execFileSync } = await import("node:child_process");
+  const gh = (args: string[]) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60_000 }).trim();
+  const urls = gh(["pr", "list", "-R", APP_REPO, "--state", "open", "--search", `seo(${id8}) in:title`, "--json", "url,title", "--jq", `.[] | select(.title | startswith("seo(${id8})")) | .url`]).split("\n").filter(Boolean);
+  for (const url of urls) gh(["pr", "close", url, "--comment", reason, "--delete-branch"]);
+};
+
+export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRun?: boolean; closePr?: ClosePr } = {}): Promise<BridgeResult> {
   const orbita = deps.orbita ?? orbitaCli;
   const now = deps.now ?? new Date();
   const dry = deps.dryRun ?? false;
@@ -102,6 +116,23 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
       await prisma.opportunity.updateMany({ where: { id: link.opportunityId, state: "queued" }, data: { state: "open", stateChangedAt: now } });
     }
     result.expired += 1;
+  }
+
+  // 2a. Tareas automáticas que no pueden terminar: IA editorial desactivada (mejoras de artículos) o
+  // PR abierto más de AUTO_TASK_MAX_DAYS días. Se cancelan (no se bloquean: no cuentan para el freno),
+  // se cierra el PR y el hallazgo se descarta, así que no se vuelve a crear para la misma clave.
+  if (!dry) {
+    const editorialOff = (await batteryState(now)).status === "disabled";
+    const open = await prisma.seoTaskLink.findMany({ where: { closedAt: null, taskStatus: "in_progress", contract: { path: ["publishPolicy"], equals: "auto-merge-if-green" } } });
+    for (const link of open) {
+      const old = now.getTime() - link.createdAt.getTime() > AUTO_TASK_MAX_DAYS * 86400_000;
+      const off = editorialOff && link.operation === "content-improve";
+      if (!old && !off) continue;
+      const why = off ? "IA editorial desactivada para esta configuración" : `más de ${AUTO_TASK_MAX_DAYS} días sin poder fusionarse`;
+      if (!(await orbita.cancelIfInProgress(link.orbitaTaskId, `Cerrada por seo-agent: ${why}.`))) continue;
+      await (deps.closePr ?? ghClosePr)(link.orbitaTaskId.slice(0, 8), `Cerrado por seo-agent: ${why}.`).catch(() => {});
+      result.expired += 1;
+    }
   }
 
   // 2b. Tres tareas automáticas (A1) seguidas bloqueadas saltan el freno. Solo cuentan las creadas después del
@@ -173,7 +204,7 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
       if (!promoted && autoOn && isAutoCandidate(built) && !built.tainted && autoLast24h >= AUTO_DAILY_CAP) continue;
       // Mejoras de artículos: solo se crean cuando el piloto editorial tiene plaza (si no, se quedan
       // abiertas y retenidas en Órbita); el hallazgo espera y vuelve a planearse en otra pasada.
-      if (promoted && built.operation === "content-improve" && !(pilotRoom ??= await pilotHasRoom(now))) continue;
+      if (promoted && built.operation === "content-improve" && !(pilotRoom ??= (await batteryState(now)).status === "ok" && (await pilotHasRoom(now)))) continue;
       const contract = promoted ?? built;
       const auto = promoted !== null;
       const errors = validateContract(contract, { allowAutoMerge: auto });
