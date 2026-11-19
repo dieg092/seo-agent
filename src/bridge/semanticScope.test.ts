@@ -86,3 +86,44 @@ test("mejorar artículo: solo el texto del artículo y la fecha en posts.ts", ()
 test("operaciones sin regla propia: no hay fusión automática", () => {
   assert.equal(semanticScope("jsonld-fix", [{ path: "a", base: "a", head: "b" }], []).ok, false);
 });
+
+test("alt de imagen: solo cambia el texto alternativo y el nuevo describe", () => {
+  const base = '<img src="/a.webp" alt="" className="w-full" />\n![](/b.webp)\n';
+  const ok = base.replace('alt=""', 'alt="Mesa de boda con flores blancas"').replace("![](", "![Novios en la playa al atardecer](");
+  assert.deepEqual(semanticScope("image-alt", [{ path: "src/lib/blog/content/a/b.ts", base, head: ok }], []), { ok: true });
+  const fichero = base.replace('alt=""', 'alt="a.webp"');
+  assert.match((semanticScope("image-alt", [{ path: "src/lib/blog/content/a/b.ts", base, head: fichero }], []) as { reason: string }).reason, /nombre del archivo/);
+  const src2 = base.replace('alt=""', 'alt="Mesa de boda con flores"').replace("/a.webp", "/c.webp");
+  assert.match((semanticScope("image-alt", [{ path: "src/lib/blog/content/a/b.ts", base, head: src2 }], []) as { reason: string }).reason, /además del texto alternativo/);
+});
+
+test("enlaces nuevos: solo enlaza texto que ya estaba, a páginas públicas, como mucho 3 por artículo", () => {
+  const base = "Antes de nada, mirad los precios y la guía de invitaciones.\n";
+  const ok = base.replace("los precios", "[los precios](/precios)").replace("la guía de invitaciones", "[la guía de invitaciones](/blog/invitaciones-y-web-de-boda/guia)");
+  assert.deepEqual(semanticScope("internal-links-batch", [{ path: "src/lib/blog/content/a/b.ts", base, head: ok }], []), { ok: true });
+  const texto = base.replace("los precios", "[nuestros precios](/precios)");
+  assert.match((semanticScope("internal-links-batch", [{ path: "src/lib/blog/content/a/b.ts", base, head: texto }], []) as { reason: string }).reason, /cambia el texto/);
+  const privado = base.replace("los precios", "[los precios](/canario-privado-7f3a)");
+  assert.match((semanticScope("internal-links-batch", [{ path: "src/lib/blog/content/a/b.ts", base, head: privado }], []) as { reason: string }).reason, /página pública/);
+  const externo = base.replace("los precios", "[los precios](https://otra.web/x)");
+  assert.equal(semanticScope("internal-links-batch", [{ path: "src/lib/blog/content/a/b.ts", base, head: externo }], []).ok, false);
+  const muchos = "a b c d\n";
+  const cuatro = "[a](/precios) [b](/precios) [c](/precios) [d](/precios)\n";
+  assert.match((semanticScope("internal-links-batch", [{ path: "src/lib/blog/content/a/b.ts", base: muchos, head: cuatro }], []) as { reason: string }).reason, /más de 3/);
+});
+
+test("robots: solo se añade la línea del sitemap", () => {
+  const base = "export default function robots() {\n  return { rules: [{ userAgent: \"*\", allow: \"/\" }],\n  };\n}\n";
+  const ok = base.replace("  };", "    sitemap: \"https://miwebdeboda.com/sitemap.xml\",\n  };");
+  assert.deepEqual(semanticScope("robots-restore-sitemap-directive", [{ path: "src/app/robots.ts", base, head: ok }], []), { ok: true });
+  const bloquea = base.replace('allow: "/"', 'disallow: "/"');
+  assert.equal(semanticScope("robots-restore-sitemap-directive", [{ path: "src/app/robots.ts", base, head: bloquea }], []).ok, false);
+});
+
+test("toda operación automática tiene su regla de alcance", async () => {
+  const { AUTO_OPERATIONS } = await import("./contract");
+  for (const op of AUTO_OPERATIONS) {
+    const r = semanticScope(op, [{ path: "x", base: "a\n", head: "b\n" }], []);
+    assert.ok(r.ok || !/no tiene comprobación/.test((r as { reason: string }).reason), op);
+  }
+});

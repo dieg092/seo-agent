@@ -166,6 +166,78 @@ function checkContent(files: FileVersions[]): SemanticResult {
   return { ok: true };
 }
 
+const ALT_ATTR = /\balt=(["'])(.*?)\1/g;
+const MD_IMAGE_ALT = /!\[([^\]]*)\]\(/g;
+
+function alts(line: string): string[] {
+  return [...line.matchAll(ALT_ATTR)].map((m) => m[2]).concat([...line.matchAll(MD_IMAGE_ALT)].map((m) => m[1]));
+}
+
+/** Un alt útil: con palabras, no el nombre del archivo. */
+export function goodAlt(alt: string): boolean {
+  const t = alt.trim();
+  return t.length >= 5 && /\s/.test(t) && !/\.(webp|jpe?g|png|gif|avif|svg)$/i.test(t);
+}
+
+function checkImageAlt(files: FileVersions[]): SemanticResult {
+  for (const f of files) {
+    if (f.base === null || f.head === null) return { ok: false, reason: `${f.path}: cambiar un alt no crea ni borra ficheros` };
+    for (const h of diffHunks(f.base, f.head)) {
+      if (h.removed.length !== h.added.length) return { ok: false, reason: `${f.path}: cambia líneas, no solo textos alternativos` };
+      for (let i = 0; i < h.added.length; i++) {
+        const strip = (l: string) => l.replace(ALT_ATTR, "alt=<A>").replace(MD_IMAGE_ALT, "![<A>](");
+        if (strip(h.removed[i]) !== strip(h.added[i])) return { ok: false, reason: `${f.path}: cambia algo además del texto alternativo` };
+        const before = alts(h.removed[i]);
+        for (const [j, alt] of alts(h.added[i]).entries()) {
+          if (alt !== before[j] && !goodAlt(alt)) return { ok: false, reason: `${f.path}: un alt nuevo está vacío o es el nombre del archivo` };
+        }
+      }
+    }
+  }
+  return { ok: true };
+}
+
+const MD_LINK = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+export const MAX_NEW_LINKS = 15;
+export const MAX_NEW_LINKS_PER_FILE = 3;
+
+function checkLinksBatch(files: FileVersions[]): SemanticResult {
+  let total = 0;
+  for (const f of files) {
+    if (f.base === null || f.head === null) return { ok: false, reason: `${f.path}: añadir enlaces no crea ni borra ficheros` };
+    let inFile = 0;
+    for (const h of diffHunks(f.base, f.head)) {
+      if (h.removed.length !== h.added.length) return { ok: false, reason: `${f.path}: cambia líneas, no solo añade enlaces` };
+      for (let i = 0; i < h.added.length; i++) {
+        const plain = (l: string) => l.replace(MD_LINK, "$1");
+        if (plain(h.removed[i]) !== plain(h.added[i])) return { ok: false, reason: `${f.path}: cambia el texto además de enlazarlo` };
+        const old = new Set([...h.removed[i].matchAll(MD_LINK)].map((m) => m[2]));
+        const fresh = [...h.added[i].matchAll(MD_LINK)].map((m) => m[2]).filter((u) => !old.has(u));
+        for (const target of fresh) {
+          if (!target.startsWith("/") || target.startsWith("//") || classifyPath(target) !== "public") return { ok: false, reason: `${f.path}: un enlace nuevo no apunta a una página pública de la web` };
+        }
+        inFile += fresh.length;
+      }
+    }
+    if (inFile > MAX_NEW_LINKS_PER_FILE) return { ok: false, reason: `${f.path}: más de ${MAX_NEW_LINKS_PER_FILE} enlaces nuevos en un artículo` };
+    total += inFile;
+  }
+  if (total === 0) return { ok: false, reason: "no añade ningún enlace" };
+  if (total > MAX_NEW_LINKS) return { ok: false, reason: `más de ${MAX_NEW_LINKS} enlaces nuevos` };
+  return { ok: true };
+}
+
+function checkRobotsSitemap(files: FileVersions[]): SemanticResult {
+  for (const f of files) {
+    if (f.path !== "src/app/robots.ts" || f.base === null || f.head === null) return { ok: false, reason: "solo se puede tocar src/app/robots.ts" };
+    for (const h of diffHunks(f.base, f.head)) {
+      if (h.removed.length > 0) return { ok: false, reason: "robots.ts: no se puede quitar nada" };
+      if (h.added.some((l) => !/sitemap/i.test(l) && !BLANK.test(l))) return { ok: false, reason: "robots.ts: solo se puede añadir la línea del sitemap" };
+    }
+  }
+  return { ok: true };
+}
+
 /** Comprobación por operación. Las operaciones sin regla propia no pasan a fusión automática. */
 export function semanticScope(operation: string, files: FileVersions[], contractUrls: string[]): SemanticResult {
   if (files.length === 0) return { ok: false, reason: "el PR no cambia ningún fichero" };
@@ -176,6 +248,12 @@ export function semanticScope(operation: string, files: FileVersions[], contract
       return checkBrokenLinks(files);
     case "content-improve":
       return checkContent(files);
+    case "image-alt":
+      return checkImageAlt(files);
+    case "internal-links-batch":
+      return checkLinksBatch(files);
+    case "robots-restore-sitemap-directive":
+      return checkRobotsSitemap(files);
     default:
       return { ok: false, reason: `la operación ${operation} no tiene comprobación de alcance por significado` };
   }

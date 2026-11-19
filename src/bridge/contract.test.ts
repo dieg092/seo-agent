@@ -146,7 +146,7 @@ test("promoción a fusión automática: solo A1 del catálogo automático y una 
   assert.equal(promoteToAuto(c, 1), null, "cupo diario agotado");
   assert.equal(promoteToAuto(buildContract(opp(), { now: NOW, changeId: "c" }), 0)?.publishPolicy, "auto-merge-if-green", "el riesgo no cuenta");
   assert.equal(promoteToAuto(buildContract(opp({ severity: "low", autonomy: "A2" }), { now: NOW, changeId: "c" }), 0), null, "A2");
-  assert.equal(promoteToAuto(buildContract(opp({ severity: "low", operation: "internal-links-batch" }), { now: NOW, changeId: "c" }), 0), null, "fuera del catálogo automático");
+  assert.equal(promoteToAuto(buildContract(opp({ severity: "low", operation: "jsonld-fix" }), { now: NOW, changeId: "c" }), 0), null, "fuera del catálogo automático");
   assert.equal(promoteToAuto({ ...c, tainted: true }, 0), null, "contaminado");
 });
 

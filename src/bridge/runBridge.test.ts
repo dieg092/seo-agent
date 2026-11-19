@@ -56,7 +56,7 @@ async function seed(n: number, over: Record<string, unknown> = {}) {
       state: "open",
       page: `https://miwebdeboda.com/blog/a/p${n}`,
       // A1 que no está en el catálogo automático: sigue siendo propuesta.
-      operation: "image-alt",
+      operation: "jsonld-fix",
       autonomy: "A1",
       lane: "content",
       severity: "high",

@@ -183,7 +183,7 @@ export function buildContract(opp: ContractOpportunity, deps: { now: Date; chang
     // Hallazgos que salen de páginas de terceros (competidores): nunca A1 ni fusión automática.
     tainted: TAINTED_FINDINGS.has(opp.findingType),
     risk: opp.severity === "critical" || opp.severity === "high" ? "high" : opp.severity === "medium" ? "medium" : "low",
-    tests: writes ? ["pnpm type-check", "pnpm seo:check", ...(operation === "content-improve" ? ["pnpm blog:lint"] : [])] : [],
+    tests: writes ? ["pnpm type-check", "pnpm seo:check", ...(["content-improve", "internal-links-batch", "image-alt"].includes(operation) ? ["pnpm blog:lint"] : [])] : [],
     acceptance: [...scope.acceptance, ...(writes ? ["diff dentro de allowedPaths y de los límites"] : [])],
     // Fase 3: solo propuestas. Ninguna tarea se fusiona sola hasta activar A1 (fase 4).
     publishPolicy: writes ? "pr-only" : "none",
@@ -211,7 +211,15 @@ export function pathAllowed(file: string, allowedPaths: string[]): boolean {
 export const TAINTED_FINDINGS: ReadonlySet<string> = new Set(["competitor-gap"]);
 
 /** Operaciones A1 que el puente puede fusionar solo (fase 4). Las demás siguen como propuesta. */
-export const AUTO_OPERATIONS: ReadonlySet<string> = new Set(["meta-title-description", "broken-internal-link-fix", "content-improve"]);
+// Cada una tiene su comprobación de alcance por significado (semanticScope): sin regla propia, no hay fusión automática.
+export const AUTO_OPERATIONS: ReadonlySet<string> = new Set([
+  "meta-title-description",
+  "broken-internal-link-fix",
+  "content-improve",
+  "image-alt",
+  "internal-links-batch",
+  "robots-restore-sitemap-directive",
+]);
 /** Como mucho una tarea automática nueva cada 24 h: si algo sale mal, se ve antes de la siguiente. */
 export const AUTO_DAILY_CAP = 1;
 
