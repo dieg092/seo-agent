@@ -25,6 +25,7 @@ import type { Runner } from "./evaluator";
 import { budgetedRunner } from "./budget";
 import { classifyModelError } from "./modelErrors";
 import { deterministicBlock, editorialConfigKey, pairedDecision, scoreVersion, type VersionScore } from "./paired";
+import { CRITERION_FLOOR, CRITERION_KEYS } from "./rubric";
 import { BASE_ARTICLE, BATTERY_CASES, BATTERY_MIN_RATE, BATTERY_SLUG, BATTERY_VERSION, type BatteryCase } from "./fixtures/validationCases";
 
 export const BATTERY_MAX_AGE_DAYS = 30;
@@ -181,6 +182,18 @@ export async function stepBattery(runner: Runner, now: Date, siteBase: string, d
     return `batería de defectos: no pasa (intento ${run!.attempt}/${MAX_QUALITY_ATTEMPTS}; se le escapan: ${missed.join(", ")})`;
   };
 
+  // Base no válida: cuenta como intento fallido de calidad (mismas esperas y mismo tope de 3).
+  const finishInvalid = async (why: string): Promise<string> => {
+    await prisma.editorialBattery.create({ data: { configKey: key, passed: false, detected: 0, total: BATTERY_CASES.length, criticalMissed: 0, detail: { runId, invalid: why } as object, createdAt: now } });
+    if (run!.attempt >= MAX_QUALITY_ATTEMPTS) {
+      await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { status: "disabled-quality", finishedAt: now } });
+      await alertOnce(key, "disabled-quality", `La batería de defectos no es válida ${MAX_QUALITY_ATTEMPTS} veces seguidas: ${why}. La IA editorial queda desactivada para esta configuración; el resto del SEO sigue.`, alert);
+      return `batería de defectos: ${why}; IA editorial desactivada`;
+    }
+    await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { status: "failed-quality", finishedAt: now, nextAttemptAt: new Date(now.getTime() + QUALITY_BACKOFF_HOURS[run!.attempt - 1] * HOUR) } });
+    return `batería de defectos: no vale (${why}; intento ${run!.attempt}/${MAX_QUALITY_ATTEMPTS})`;
+  };
+
   const rs0 = await results();
   if (earlyVerdict(rs0, BATTERY_CASES.length) || rs0.length === BATTERY_CASES.length) return finish();
 
@@ -189,6 +202,13 @@ export async function stepBattery(runner: Runner, now: Date, siteBase: string, d
   const url = `${siteBase}/blog/${BATTERY_SLUG}`;
   try {
     const base: VersionScore = await scoreVersion({ url, md: BASE_ARTICLE, siteBase, runner: persistent(runId, "__base__", "base", model) }, "base");
+    // Ningún criterio del artículo base por debajo del suelo: si no, cualquier cambio se bloquearía por
+    // carencias de la base y la batería no mediría si se detectan los defectos.
+    const weak = CRITERION_KEYS.filter((k) => base.evals.some((e) => e.criteria[k].score < CRITERION_FLOOR));
+    if (weak.length) {
+      await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { detail: { invalidBase: { score: base.score, weak } } } });
+      return finishInvalid(`el artículo base tiene criterios por debajo de ${CRITERION_FLOOR}: ${weak.join(", ")}`);
+    }
     for (const c of modelOrder(BATTERY_CASES)) {
       if ((await results()).some((r) => r.caseId === c.id)) continue;
       const d = await pairedDecision({ url, label: c.id, baseMd: BASE_ARTICLE, headMd: c.head, siteBase, runner: persistent(runId, c.id, "head", model), base });

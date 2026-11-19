@@ -4,20 +4,30 @@
 // completa (pairedDecision) no puede aprobar ninguna crítica y como mucho puede dejar pasar el 10 %
 // del resto. Casos críticos: cifras inventadas, contradicciones y cambio de intención.
 
-export const BATTERY_VERSION = "battery-v1";
+export const BATTERY_VERSION = "battery-v2";
 export const BATTERY_SLUG = "bateria/lista-de-invitados";
 
 export const BASE_ARTICLE = `# Cómo hacer la lista de invitados de la boda sin discutir
 
-Hacer la lista de invitados es lo primero que conviene cerrar, porque de ella dependen el sitio, el menú y el presupuesto. Aquí tenéis un método que funciona para parejas que no quieren pasarse semanas negociando.
+Hacer la lista de invitados es lo primero que conviene cerrar, porque de ella dependen el sitio, el menú y el presupuesto. Aquí tenéis un método que funciona para parejas que no quieren pasarse semanas negociando. Sale de lo que vemos en las parejas que organizan su boda con nosotros: las que fijan el límite antes de apuntar nombres discuten menos y recortan menos al final.
+
+![Pareja repasando la lista de invitados en una mesa con una libreta](/images/blog/lista-invitados.webp)
 
 ## Empezad por el límite, no por los nombres
 
-Antes de apuntar a nadie, decidid cuántas personas caben en el sitio que os gusta y cuántas podéis pagar. El número más bajo de los dos es vuestro límite real. Si empezáis por los nombres, la lista crece sin freno y luego toca recortar a gente que ya sabía que estaba invitada.
+Antes de apuntar a nadie, decidid cuántas personas caben en el sitio que os gusta y cuántas podéis pagar (si aún no tenéis la cifra, empezad por [cómo calcular el presupuesto de la boda](/blog/organizar-boda/presupuesto-boda)). El número más bajo de los dos es vuestro límite real. Si empezáis por los nombres, la lista crece sin freno y luego toca recortar a gente que ya sabía que estaba invitada.
 
 ## Repartid por círculos
 
-Haced tres columnas: imprescindibles (familia directa y amigos íntimos), importantes (familia extensa y amigos con trato frecuente) y opcionales (compañeros de trabajo, conocidos, acompañantes). Rellenad primero los imprescindibles de los dos lados. Si ya llegáis al límite, los opcionales no entran y os ahorráis la discusión.
+Haced tres columnas:
+
+| Círculo | Quién entra |
+|---|---|
+| Imprescindibles | Familia directa y amigos íntimos |
+| Importantes | Familia extensa y amigos con trato frecuente |
+| Opcionales | Compañeros de trabajo, conocidos y acompañantes |
+
+Rellenad primero los imprescindibles de los dos lados. Si ya llegáis al límite, los opcionales no entran y os ahorráis la discusión.
 
 ## Acordad las reglas antes de discutir casos
 
@@ -25,7 +35,7 @@ Poned por escrito tres o cuatro reglas que valgan para los dos: por ejemplo, que
 
 ## Pedid la confirmación por escrito
 
-Las confirmaciones de palabra se olvidan. Pedid que cada invitado confirme por escrito, con un formulario o un mensaje, e indicad una fecha límite clara. Así sabréis el número final a tiempo para cerrarlo con el catering.
+Las confirmaciones de palabra se olvidan. Pedid que cada invitado confirme por escrito, con un formulario o un mensaje, e indicad una fecha límite clara. Si tenéis [web de boda con confirmación de asistencia](/web-de-boda), las respuestas quedan apuntadas solas y no tenéis que perseguir a nadie. Así sabréis el número final a tiempo para cerrarlo con el catering.
 
 ## Qué hacer con los padres
 

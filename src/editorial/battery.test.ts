@@ -90,6 +90,13 @@ test("se corta a mitad y se reanuda sin repetir ninguna llamada", async () => {
   assert.equal(calls, 2 + 2 * MODEL_CASES, "ninguna respuesta pedida dos veces");
 });
 
+test("si el artículo base tiene algún criterio < 4, la batería no vale aunque bloquee todo", async () => {
+  const floorLow: Runner = async () => ({ summary: "", criteria: Object.fromEntries(CRITERION_KEYS.map((k) => [k, { score: k === "enlazado" ? 2 : 7.5, evidence: ["Hacer la lista de invitados es lo primero"], note: "" }])) });
+  const note = await stepBattery(floorLow, NOW, SITE, { unbudgeted: true, alert });
+  assert.match(note, /no vale \(el artículo base tiene criterios por debajo de 4: enlazado/);
+  assert.notEqual((await batteryState(NOW)).status, "ok");
+});
+
 test("evaluador que premia lo largo: no pasa, corta pronto, reintenta con espera y a la 3.ª queda desactivada (terminal)", async () => {
   const naive = counting((user) => 6 + (user.match(/\n## /g)?.length ?? 0) * 0.5);
   const n1 = await stepBattery(naive.runner, NOW, SITE, { unbudgeted: true, alert });
