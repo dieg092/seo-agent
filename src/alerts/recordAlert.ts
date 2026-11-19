@@ -1,3 +1,4 @@
+import { redactText } from "../privacy/outboundPolicy";
 // src/alerts/recordAlert.ts
 import { prisma } from "../db";
 import { sendTelegramMessage } from "./sendTelegramMessage";
@@ -9,6 +10,8 @@ export async function recordAlert(deps: {
   notify?: typeof sendTelegramMessage;
 }): Promise<void> {
   const notify = deps.notify ?? sendTelegramMessage;
+  // nada privado sale en un aviso: ni a la BD ni a Telegram
+  deps = { ...deps, subject: redactText(deps.subject), body: redactText(deps.body) };
 
   await prisma.alert.create({
     data: {

@@ -4,6 +4,7 @@
 // este código según la operación, nunca del hallazgo: así una tarea no puede
 // pedir más permisos de los que tiene su operación.
 import { isPrivateUrl } from "../privacy/sitePrivacy";
+import { redactText, redactValue } from "../privacy/outboundPolicy";
 
 export const CONTRACT_VERSION = 1;
 export const REPO = "wedding-invite-2";
@@ -170,8 +171,8 @@ export function buildContract(opp: ContractOpportunity, deps: { now: Date; chang
     autonomy,
     lane: opp.lane,
     repo: REPO,
-    objective: opp.title,
-    evidence: opp.detail ?? null,
+    objective: redactText(opp.title),
+    evidence: redactValue(opp.detail ?? null),
     queries: sanitizeQueries(opp.detail),
     urls: publicUrls(opp),
     allowedPaths: scope.allowedPaths,

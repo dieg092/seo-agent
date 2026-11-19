@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prisma } from "../db";
 import { recordAlert } from "../alerts/recordAlert";
+import { containsPrivate } from "../privacy/outboundPolicy";
 import { InvalidTransitionError, transition, type LifecycleEvent } from "../opportunity/lifecycle";
 import { lifecycleData, lifecycleOf } from "../prioritization/prioritize";
 import { dismissalValue, type PriorityFactors } from "../prioritization/priority";
@@ -177,6 +178,17 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
           type: "seo-bridge-contract-rejected",
           subject: `Contrato SEO rechazado (${opp.findingType})`,
           body: `El puente no crea la tarea del hallazgo ${opp.stableKey.slice(0, 12)}: ${errors.join(", ")}.`,
+        });
+        continue;
+      }
+      // comprobación final de salida: nada privado llega a Órbita ni al modelo
+      const outbound = { title: taskTitle(contract), description: renderDescription(contract), prompt: renderPrompt(contract), seo: contract };
+      if (containsPrivate(outbound)) {
+        result.rejected += 1;
+        await recordAlert({
+          type: "seo-bridge-private-outbound",
+          subject: `Tarea SEO retenida por privacidad (${opp.findingType})`,
+          body: `El puente no crea la tarea del hallazgo ${opp.stableKey.slice(0, 12)}: su contenido de salida contiene algo privado.`,
         });
         continue;
       }
