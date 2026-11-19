@@ -499,6 +499,34 @@ model SeoControl {
 
 // Fase 4 (§13): un despliegue de producción de wedding-invite-2 y los commits
 // seo(...) de todo el rango desplegado. Lo escribe la CI de main (rol seo_ci).
+// Cambio SEO automático (A1) de punta a punta: tarea de Órbita, commit seo(<id8>), primer despliegue que lo
+// incluye y medición por página. Estados: pending-deploy, deployed, negative-unconfirmed, measured,
+// not-evaluable, ambiguous, reverted.
+model SeoChange {
+  id              String    @id @default(uuid())
+  orbitaTaskId    String    @unique
+  changeId8       String
+  stableKey       String
+  findingType     String
+  operation       String?
+  page            String?
+  status          String
+  deployCommitSha String?
+  deployedAt      DateTime?
+  outcome         String?
+  outcomeDetail   Json?
+  measuredAt      DateTime?
+  // un negativo se confirma con una segunda ventana antes de revertir
+  confirmAfter    DateTime?
+  alertedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status])
+  @@index([changeId8])
+  @@schema("seo_agent")
+}
+
 model DeployEvent {
   commitSha    String   @id
   deployedAt   DateTime @default(now())

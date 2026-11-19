@@ -7,6 +7,7 @@ import { recordAlert } from "../src/alerts/recordAlert";
 import { detectRegressions, runReverts } from "../src/revert/runRevert";
 import { runGithubJobs } from "../src/githubJobs/runGithubJobs";
 import { runEditorial } from "../src/editorial/runEditorial";
+import { measureChanges, reconcileChanges } from "../src/graduation/changeLedger";
 
 async function main(): Promise<number> {
   const dryRun = process.argv.includes("--dry-run");
@@ -26,6 +27,16 @@ async function main(): Promise<number> {
       } catch (error) {
         console.error("reversiones SEO:", error);
         await recordAlert({ type: "seo-revert-failed", subject: "La sonda o la reversión SEO ha fallado", body: String(error).slice(0, 1000) }).catch(() => {});
+      }
+      // Registro de cambios A1: tarea → despliegue → medición por página y, si empeora dos veces, reversión.
+      try {
+        const now = new Date();
+        const notes = [...(await reconcileChanges(now)), ...(await measureChanges(now))];
+        if (notes.length) console.log(`  ${notes.join("; ")}`);
+      } catch (error) {
+        console.error("registro de cambios:", error);
+        const recent = await prisma.alert.count({ where: { type: "seo-ledger-failed", createdAt: { gte: new Date(Date.now() - 24 * 3600_000) } } }).catch(() => 1);
+        if (!recent) await recordAlert({ type: "seo-ledger-failed", subject: "El registro de cambios SEO ha fallado", body: String(error).slice(0, 1000) }).catch(() => {});
       }
       // Trabajos con escritura en GitHub (Tier 1, sincronización semanal): con el gh del Mac, sin PAT.
       try {
