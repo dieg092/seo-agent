@@ -7,7 +7,8 @@ import { recordAlert } from "../src/alerts/recordAlert";
 import { detectRegressions, runReverts } from "../src/revert/runRevert";
 import { runGithubJobs } from "../src/githubJobs/runGithubJobs";
 import { runEditorial } from "../src/editorial/runEditorial";
-import { measureChanges, reconcileChanges } from "../src/graduation/changeLedger";
+import { advanceReverts, measureChanges, reconcileChanges } from "../src/graduation/changeLedger";
+import { advancePilots, pilotReport } from "../src/editorial/pilot";
 
 async function main(): Promise<number> {
   const dryRun = process.argv.includes("--dry-run");
@@ -31,7 +32,7 @@ async function main(): Promise<number> {
       // Registro de cambios A1: tarea → despliegue → medición por página y, si empeora dos veces, reversión.
       try {
         const now = new Date();
-        const notes = [...(await reconcileChanges(now)), ...(await measureChanges(now))];
+        const notes = [...(await reconcileChanges(now)), ...(await measureChanges(now)), ...(await advanceReverts(now)), ...(await advancePilots(now)), ...(await pilotReport(now))];
         if (notes.length) console.log(`  ${notes.join("; ")}`);
       } catch (error) {
         console.error("registro de cambios:", error);

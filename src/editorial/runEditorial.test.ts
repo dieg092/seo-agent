@@ -3,8 +3,9 @@ import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../db";
 import { runEditorial } from "./runEditorial";
-import { CRITERION_KEYS } from "./rubric";
-import type { Runner } from "./evaluator";
+import { CRITERION_KEYS, RUBRIC_VERSION } from "./rubric";
+import { EVALUATOR_MODEL, type Runner } from "./evaluator";
+import { batteryKey } from "./battery";
 
 const NOW = new Date("2026-11-18T10:00:00Z");
 const BASE = "https://miwebdeboda.com";
@@ -13,6 +14,9 @@ const SLUGS = Array.from({ length: 14 }, (_, i) => `organizar-boda/art-${i}`);
 beforeEach(async () => {
   await prisma.editorialScore.deleteMany({});
   await prisma.editorialCalibration.deleteMany({});
+  await prisma.editorialBattery.deleteMany({});
+  // batería aprobada y vigente: estos tests miran la calibración y la evaluación rutinaria
+  await prisma.editorialBattery.create({ data: { configKey: batteryKey(), passed: true, detected: 20, total: 20, criticalMissed: 0, detail: {}, createdAt: NOW } });
   await prisma.alert.deleteMany({ where: { type: { startsWith: "editorial-" } } });
   await prisma.searchConsolePageDaily.deleteMany({ where: { page: { startsWith: `${BASE}/blog/` } } });
   // art-0 es el que mejor funciona en GSC y art-7 el peor.
@@ -59,7 +63,7 @@ test("con las notas al revés que GSC en 12 o más artículos, suspende y avisa"
   const f = fakeRunner((u) => 4 + idx(u) * 0.3); // al revés que GSC
   // Notas ya puestas al resto de artículos (de pasadas anteriores), también al revés.
   await prisma.editorialScore.createMany({
-    data: SLUGS.map((slug, i) => ({ slug, url: `${BASE}/blog/${slug}`, contentHash: "x", kind: "routine", rubricVersion: "t", model: "t", score: 4 + i * 0.3, finalScore: 4 + i * 0.3, decision: "block", reason: "", criteria: {}, deterministic: {}, createdAt: new Date(NOW.getTime() - 86400_000) })),
+    data: SLUGS.map((slug, i) => ({ slug, url: `${BASE}/blog/${slug}`, contentHash: "x", kind: "routine", rubricVersion: RUBRIC_VERSION, model: EVALUATOR_MODEL, score: 4 + i * 0.3, finalScore: 4 + i * 0.3, decision: "block", reason: "", criteria: {}, deterministic: {}, createdAt: new Date(NOW.getTime() - 86400_000) })),
   });
   const n1 = await runEditorial({ now: NOW, runner: f.runner, fetchHtml, listArticles });
   assert.match(n1[0], /calibración: inverted/);
@@ -80,6 +84,19 @@ test("si el evaluador aprueba el artículo trampa, la calibración no vale", asy
   assert.match(n1[0], /calibración: drift \(el artículo trampa saca/);
 });
 
+test("sin batería vigente, la pasada la ejecuta antes de evaluar; una nota de otra rúbrica no cuenta para el diagnóstico", async () => {
+  const f = fakeRunner((u) => 8.8 - idx(u) * 0.3);
+  await runEditorial({ now: NOW, runner: f.runner, fetchHtml, listArticles });
+  await prisma.editorialBattery.deleteMany({});
+  await prisma.editorialScore.createMany({
+    data: SLUGS.map((slug, i) => ({ slug, url: `${BASE}/blog/${slug}`, contentHash: "x", kind: "routine", rubricVersion: "vieja", model: "t", score: 4 + i * 0.3, finalScore: 4 + i * 0.3, decision: "block", reason: "", criteria: {}, deterministic: {}, createdAt: new Date(NOW.getTime() + 1000) })),
+  });
+  const n = await runEditorial({ now: new Date(NOW.getTime() + 60_000), runner: f.runner, fetchHtml, listArticles });
+  assert.match(n[0], /batería de defectos: /);
+  assert.equal(await prisma.editorialBattery.count(), 1);
+  assert.equal((await prisma.editorialCalibration.findFirstOrThrow({ orderBy: { createdAt: "desc" } })).status, "ok", "las notas de otra rúbrica no invierten nada");
+});
+
 test("deriva: las referencias se reutilizan al mes y una que se mueve más de 1 punto suspende", async () => {
   let shift = 0;
   const f = fakeRunner((u) => 8.8 - idx(u) * 0.3 + (u.endsWith("art-0") ? shift : 0));
@@ -97,7 +114,7 @@ test("la validez se vigila en cada pasada: si las notas nuevas van al revés, su
   const f = fakeRunner((u) => 8.8 - idx(u) * 0.3);
   await runEditorial({ now: NOW, runner: f.runner, fetchHtml, listArticles });
   await prisma.editorialScore.createMany({
-    data: SLUGS.map((slug, i) => ({ slug, url: `${BASE}/blog/${slug}`, contentHash: "x", kind: "routine", rubricVersion: "t", model: "t", score: 4 + i * 0.3, finalScore: 4 + i * 0.3, decision: "block", reason: "", criteria: {}, deterministic: {}, createdAt: new Date(NOW.getTime() + 1000) })),
+    data: SLUGS.map((slug, i) => ({ slug, url: `${BASE}/blog/${slug}`, contentHash: "x", kind: "routine", rubricVersion: RUBRIC_VERSION, model: EVALUATOR_MODEL, score: 4 + i * 0.3, finalScore: 4 + i * 0.3, decision: "block", reason: "", criteria: {}, deterministic: {}, createdAt: new Date(NOW.getTime() + 1000) })),
   });
   const n = await runEditorial({ now: new Date(NOW.getTime() + 60_000), runner: f.runner, fetchHtml, listArticles });
   assert.match(n[0], /suspendida: correlación nota–GSC -1/);

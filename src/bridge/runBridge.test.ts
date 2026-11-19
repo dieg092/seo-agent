@@ -164,6 +164,25 @@ test("fase 4: una tarea automática al día; el resto de candidatos automáticos
   assert.equal((await runBridge({ orbita, now: new Date(NOW.getTime() + DAY + 60_000) })).created, 1);
 });
 
+test("mejora de artículo automática: solo se crea si el piloto editorial tiene plaza", async () => {
+  await prisma.editorialPilot.deleteMany({});
+  await prisma.editorialPilot.createMany({
+    data: [
+      { orbitaTaskId: "p1", page: "https://miwebdeboda.com/blog/a/x1", state: "observing", reservedAt: new Date(NOW.getTime() - 40 * DAY) },
+      { orbitaTaskId: "p2", page: "https://miwebdeboda.com/blog/a/x2", state: "observing", reservedAt: new Date(NOW.getTime() - 20 * DAY) },
+    ],
+  });
+  await seed(1, { operation: "content-improve", findingType: "editorial-low-score", stableKey: key(1), sourceRefId: `${PREFIX}1` });
+  const orbita = new FakeOrbita();
+  assert.equal((await runBridge({ orbita, now: NOW })).created, 0, "piloto lleno: el hallazgo espera");
+  assert.equal(await prisma.opportunity.count({ where: { sourceRefId: `${PREFIX}1`, state: "open" } }), 1);
+  await prisma.editorialPilot.update({ where: { orbitaTaskId: "p1" }, data: { state: "positive", closedAt: NOW } });
+  const r = await runBridge({ orbita, now: new Date(NOW.getTime() + 60_000) });
+  assert.equal(r.created, 1);
+  assert.equal([...orbita.tasks.values()][0].auto, true);
+  await prisma.editorialPilot.deleteMany({});
+});
+
 test("fase 4: una propuesta A1 automática sin empezar se sustituye por tarea automática", async () => {
   const opp = await seed(1, { ...meta(1), state: "queued" });
   const orbita = new FakeOrbita();

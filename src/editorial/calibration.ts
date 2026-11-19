@@ -98,8 +98,8 @@ export interface CalibrationCheck {
   drift: { slug: string; anchor: number; score: number }[];
 }
 
-/** Correlación de Spearman con rangos medios para los empates. */
-export function spearman(pairs: [number, number][]): number {
+/** Correlación de Spearman con rangos medios para los empates. Indefinida (null) si una de las dos series no varía. */
+export function spearman(pairs: [number, number][]): number | null {
   const rank = (v: number[]) => v.map((x) => v.filter((y) => y < x).length + (v.filter((y) => y === x).length - 1) / 2);
   const a = rank(pairs.map((p) => p[0]));
   const b = rank(pairs.map((p) => p[1]));
@@ -114,7 +114,7 @@ export function spearman(pairs: [number, number][]): number {
     da += (a[i] - ma) ** 2;
     db += (b[i] - mb) ** 2;
   }
-  return da && db ? Math.round((num / Math.sqrt(da * db)) * 100) / 100 : 0;
+  return da && db ? Math.round((num / Math.sqrt(da * db)) * 100) / 100 : null;
 }
 
 export function checkCalibration(
@@ -126,7 +126,12 @@ export function checkCalibration(
     .filter((r) => r.anchor !== null && scores.has(r.slug) && Math.abs(scores.get(r.slug)! - r.anchor) > MAX_DRIFT)
     .map((r) => ({ slug: r.slug, anchor: r.anchor!, score: scores.get(r.slug)! }));
   const rho = validity.length >= MIN_VALIDITY_N ? spearman(validity) : null;
-  const v = rho === null ? `validez pendiente (${validity.length}/${MIN_VALIDITY_N} artículos puntuados)` : `correlación nota–GSC ${rho} con ${validity.length} artículos`;
+  const v =
+    validity.length < MIN_VALIDITY_N
+      ? `diagnóstico pendiente (${validity.length}/${MIN_VALIDITY_N} artículos puntuados)`
+      : rho === null
+        ? `diagnóstico indefinido (notas o resultados sin variación, ${validity.length} artículos)`
+        : `correlación nota–GSC ${rho} con ${validity.length} artículos (diagnóstico, no autoriza)`;
   if (rho !== null && rho < MIN_SPEARMAN) return { status: "inverted", detail: v, drift };
   if (drift.length) return { status: "drift", detail: `${drift.length} referencia(s) a más de ${MAX_DRIFT} punto de su ancla; ${v}`, drift };
   return { status: "ok", detail: v, drift };

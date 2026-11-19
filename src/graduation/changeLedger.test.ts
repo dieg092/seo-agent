@@ -2,7 +2,7 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../db";
-import { reconcileChanges, measureChanges, metricFor } from "./changeLedger";
+import { reconcileChanges, measureChanges, metricFor, advanceReverts } from "./changeLedger";
 import { regressionKey } from "../revert/regression";
 
 const PAGE = "https://miwebdeboda.com/blog/a/b";
@@ -97,7 +97,7 @@ test("negativo: no revierte a la primera; si la segunda ventana lo confirma, abr
   assert.equal(await prisma.opportunity.count({ where: { stableKey: regressionKey("aaaa1111") } }), 0);
   await measureChanges(new Date(D0.getTime() + 60 * DAY), { sum: sumFor(0.05, 0.01), alert });
   c = await prisma.seoChange.findUniqueOrThrow({ where: { orbitaTaskId: T1 } });
-  assert.equal(c.status, "reverted");
+  assert.equal(c.status, "negative-confirmed", "todavía no está revertido: solo confirmado");
   const o = await prisma.opportunity.findUniqueOrThrow({ where: { stableKey: regressionKey("aaaa1111") } });
   assert.equal(o.operation, "revert-change");
   assert.equal(o.state, "queued");
@@ -120,4 +120,43 @@ test("otro cambio en la misma página dentro de la ventana: no evaluable", async
   await reconcileChanges(new Date(D0.getTime() + 11 * DAY), alert);
   await measureChanges(new Date(D0.getTime() + 40 * DAY), { sum: sumFor(0.02, 0.05), alert });
   assert.equal((await prisma.seoChange.findUniqueOrThrow({ where: { orbitaTaskId: T1 } })).status, "not-evaluable");
+});
+
+test("reversión: confirmado → PR abierto → fusionada → verificada solo cuando un despliegue la contiene", async () => {
+  await deployed();
+  await measureChanges(new Date(D0.getTime() + 40 * DAY), { sum: sumFor(0.05, 0.01), alert });
+  await measureChanges(new Date(D0.getTime() + 60 * DAY), { sum: sumFor(0.05, 0.01), alert });
+  let revert: string | null = null;
+  const shipped = new Set<string>();
+  const gitOps = { revertSha: () => revert, contains: (_a: string, d: string) => shipped.has(d) };
+  const status = async () => (await prisma.seoChange.findUniqueOrThrow({ where: { orbitaTaskId: T1 } })).status;
+  const at = (d: number) => new Date(D0.getTime() + d * DAY);
+
+  await advanceReverts(at(61), gitOps);
+  assert.equal(await status(), "negative-confirmed");
+  await prisma.opportunity.update({ where: { stableKey: regressionKey("aaaa1111") }, data: { detail: { changeId: "aaaa1111", prUrl: "https://github.com/x/y/pull/1" } } });
+  await advanceReverts(at(61), gitOps);
+  assert.equal(await status(), "revert-open");
+  revert = "rev1";
+  await advanceReverts(at(62), gitOps);
+  assert.equal(await status(), "revert-merged", "fusionada pero sin desplegar");
+  await prisma.deployEvent.create({ data: { commitSha: "dep-old", deployedAt: at(62), seoChangeIds: [] } });
+  await advanceReverts(at(62), gitOps);
+  assert.equal(await status(), "revert-merged", "un despliegue que no la trae no cuenta");
+  shipped.add("dep-new");
+  await prisma.deployEvent.create({ data: { commitSha: "dep-new", deployedAt: at(63), seoChangeIds: [] } });
+  await advanceReverts(at(63), gitOps);
+  const c = await prisma.seoChange.findUniqueOrThrow({ where: { orbitaTaskId: T1 } });
+  assert.equal(c.status, "revert-verified");
+  assert.equal(c.revertSha, "rev1");
+  assert.equal(c.revertVerifiedAt?.toISOString(), at(63).toISOString());
+});
+
+test("reversión que falla: revert-failed", async () => {
+  await deployed();
+  await measureChanges(new Date(D0.getTime() + 40 * DAY), { sum: sumFor(0.05, 0.01), alert });
+  await measureChanges(new Date(D0.getTime() + 60 * DAY), { sum: sumFor(0.05, 0.01), alert });
+  await prisma.opportunity.update({ where: { stableKey: regressionKey("aaaa1111") }, data: { detail: { changeId: "aaaa1111", failed: "la reversión choca con cambios posteriores" } } });
+  await advanceReverts(new Date(D0.getTime() + 61 * DAY), { revertSha: () => null, contains: () => false });
+  assert.equal((await prisma.seoChange.findUniqueOrThrow({ where: { orbitaTaskId: T1 } })).status, "revert-failed");
 });

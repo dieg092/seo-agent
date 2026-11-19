@@ -151,6 +151,7 @@ async function main(): Promise<number> {
       },
       runner: claudeRunner,
       now: new Date(),
+      orbitaTaskId: link.orbitaTaskId,
     });
   }
   console.log(d.reason);

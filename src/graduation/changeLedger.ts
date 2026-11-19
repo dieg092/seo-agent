@@ -7,6 +7,11 @@
 //      con la métrica de su operación. Otro cambio en la misma página en la ventana: no evaluable.
 //      Un negativo no revierte a la primera: se confirma con una segunda ventana 14 días después;
 //      si se confirma, se abre la reversión determinista (inverso exacto, la de runRevert).
+//   3. reverts: negative-confirmed → revert-open (PR abierto) → revert-merged (commit de
+//      reversión en main) → revert-verified (un despliegue registrado lo contiene). Nunca se da
+//      por revertido antes de verlo desplegado; si la reversión falla, revert-failed (con aviso).
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { prisma } from "../db";
 import { recordAlert } from "../alerts/recordAlert";
 import { taskId8 } from "../bridge/guard";
@@ -122,7 +127,7 @@ export async function measureChanges(now: Date, deps: { sum?: Sum; alert?: typeo
     const confirmed = r.outcome === "negative";
     await prisma.seoChange.update({
       where: { id: c.id },
-      data: { status: confirmed ? "reverted" : "measured", outcome: confirmed ? "negative" : r.outcome, outcomeDetail: { ...(c.outcomeDetail as object), confirmation: { after: { ...after }, change: r.change, reason: r.reason } } as object, measuredAt: now },
+      data: { status: confirmed ? "negative-confirmed" : "measured", outcome: confirmed ? "negative" : r.outcome, outcomeDetail: { ...(c.outcomeDetail as object), confirmation: { after: { ...after }, change: r.change, reason: r.reason } } as object, measuredAt: now },
     });
     if (!confirmed) {
       notes.push(`medición: ${c.changeId8} no se confirma el negativo (${r.outcome})`);
@@ -156,6 +161,68 @@ export async function measureChanges(now: Date, deps: { sum?: Sum; alert?: typeo
     }
     await alert({ type: "seo-change-negative", subject: `Cambio SEO ${c.changeId8}: impacto negativo confirmado, se revierte`, body: `La página empeora en las dos ventanas de medición (${metricFor(c.operation)}). Se abre la reversión determinista.` });
     notes.push(`medición: ${c.changeId8} negativo confirmado, reversión abierta`);
+  }
+  return notes;
+}
+
+export interface RevertGit {
+  /** Commit de main que revierte seo(<id8>), o null. */
+  revertSha: (id8: string) => string | null;
+  /** ¿`ancestor` está contenido en `descendant`? */
+  contains: (ancestor: string, descendant: string) => boolean;
+}
+
+const APP_DIR = () => process.env.WEDDING_INVITE_2_DIR ?? join(__dirname, "..", "..", "..", "wedding-invite-2");
+const git = (args: string[]) => execFileSync("git", args, { cwd: APP_DIR(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60_000 }).trim();
+
+export const appGit: RevertGit = {
+  revertSha: (id8) => {
+    git(["fetch", "-q", "origin", "main"]);
+    const out = git(["log", "origin/main", "-n", "400", "--format=%H%x09%s"]);
+    const line = out.split("\n").find((l) => l.split("\t").slice(1).join("\t").startsWith(`Revert "seo(${id8})`));
+    return line ? line.split("\t")[0] : null;
+  },
+  contains: (ancestor, descendant) => {
+    try {
+      git(["merge-base", "--is-ancestor", ancestor, descendant]);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+};
+
+const REVERT_STATES = ["negative-confirmed", "revert-open", "revert-merged"];
+
+/** Una pasada: sigue cada reversión hasta verla desplegada. Idempotente. */
+export async function advanceReverts(now: Date, gitOps: RevertGit = appGit): Promise<string[]> {
+  const notes: string[] = [];
+  for (const c of await prisma.seoChange.findMany({ where: { status: { in: REVERT_STATES } } })) {
+    const opp = await prisma.opportunity.findUnique({ where: { stableKey: regressionKey(c.changeId8) } });
+    const d = (opp?.detail ?? {}) as { prUrl?: string; failed?: string };
+    if (d.failed) {
+      await prisma.seoChange.update({ where: { id: c.id }, data: { status: "revert-failed" } });
+      notes.push(`registro: la reversión de ${c.changeId8} falló (${d.failed})`);
+      continue;
+    }
+    const sha = c.revertSha ?? gitOps.revertSha(c.changeId8);
+    if (!sha) {
+      if (d.prUrl && c.status === "negative-confirmed") {
+        await prisma.seoChange.update({ where: { id: c.id }, data: { status: "revert-open" } });
+        notes.push(`registro: reversión de ${c.changeId8} abierta`);
+      }
+      continue;
+    }
+    if (c.status !== "revert-merged" || !c.revertSha) {
+      await prisma.seoChange.update({ where: { id: c.id }, data: { status: "revert-merged", revertSha: sha } });
+      notes.push(`registro: reversión de ${c.changeId8} fusionada`);
+    }
+    const deploys = await prisma.deployEvent.findMany({ where: { deployedAt: { gte: c.measuredAt ?? c.createdAt } }, orderBy: { deployedAt: "asc" } });
+    const shipped = deploys.find((e) => gitOps.contains(sha, e.commitSha));
+    if (shipped) {
+      await prisma.seoChange.update({ where: { id: c.id }, data: { status: "revert-verified", revertVerifiedAt: shipped.deployedAt } });
+      notes.push(`registro: reversión de ${c.changeId8} desplegada el ${shipped.deployedAt.toISOString().slice(0, 10)}`);
+    }
   }
   return notes;
 }

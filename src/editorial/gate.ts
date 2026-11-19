@@ -1,31 +1,27 @@
 // src/editorial/gate.ts
 // La IA editorial aprueba o bloquea sola las mejoras de artículos (B5: sin el fundador).
-// Va en la guarda premerge de la operación content-improve, después de las
-// comprobaciones generales (alcance, etiquetas, freno):
-//   - con la calibración en verde (si no, se retiene);
+// Va en la guarda premerge de la operación content-improve, después de las comprobaciones
+// generales (alcance, etiquetas, freno). Por orden:
+//   - calibración en verde y vigente (deriva, inversión clara o artículo trampa la suspenden);
+//   - batería de defectos aprobada y vigente para esta configuración (battery.ts);
 //   - el PR cambia exactamente el fichero de contenido del artículo del contrato;
-//   - se evalúan main y la rama con las mismas dos capas; se fusiona si la rama
-//     aprueba (≥ 7, ningún criterio < 4, una nota ≥ 9 confirmada) y mejora a main en
-//     al menos MIN_IMPROVEMENT. El mismo texto da siempre la misma respuesta (caché).
+//   - decisión por parejas main/rama (paired.ts); el mismo par de textos da siempre la misma;
+//   - y, si aprueba, una plaza en el piloto editorial medido (pilot.ts). Sin plaza, se retiene
+//     (no se bloquea): Órbita lo vuelve a intentar y la plaza se libera sola.
+// La correlación nota–GSC entre artículos es solo diagnóstico: no autoriza ni retiene.
 import { createHash } from "node:crypto";
 import { prisma } from "../db";
 import { ALLOW, BLOCK, HOLD, type GuardDecision } from "../bridge/guard";
-import { contentFromSource, extractArticleFromMarkdown } from "./article";
-import { detectHollow } from "./hollow";
-import { EVALUATOR_MODEL, SYSTEM_PROMPT, evaluateArticle, type Runner } from "./evaluator";
-import { MIN_VALIDITY_N } from "./calibration";
-import { unsourcedNewFigures } from "./claims";
-import { EXCELLENT, RUBRIC_VERSION, combineExcellent, decide } from "./rubric";
+import { contentFromSource } from "./article";
+import { EVALUATOR_MODEL, type Runner } from "./evaluator";
+import { RUBRIC_VERSION } from "./rubric";
+import { editorialConfigKey, pairedDecision } from "./paired";
+import { batteryState } from "./battery";
+import { reservePilot } from "./pilot";
 
-export const MIN_IMPROVEMENT = 0.5;
-/** Dos evaluaciones de la misma versión que se separan más de esto: se desempata con una tercera. */
-export const DISAGREEMENT = 1;
+export { MIN_IMPROVEMENT, DISAGREEMENT } from "./paired";
 /** Una calibración vale 35 días (se rehace cada 30). */
 export const CALIBRATION_MAX_AGE_DAYS = 35;
-/** La validez (nota–GSC) se recalcula en cada pasada del puente: más de 2 días sin ella, se retiene. */
-export const VALIDITY_MAX_AGE_DAYS = 2;
-/** Para fusionar sola, la nota no puede ir en contra de los datos de Google (ρ ≥ 0 con ≥ 12 artículos). */
-export const MIN_GATE_RHO = 0;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CONTENT_FILE = /^src\/lib\/blog\/content\/([a-z0-9-]+)\/([a-z0-9-]+)\.ts$/;
 
@@ -39,23 +35,23 @@ export interface GateInput {
   readFile: (path: string, ref: string) => Promise<string | null>;
   runner: Runner;
   now: Date;
+  /** Tarea de Órbita del PR: la plaza del piloto se reserva a su nombre. */
+  orbitaTaskId?: string;
 }
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 
-/** Clave de la caché de la guarda: textos de main y de la rama, rúbrica, prompt y modelo. */
+/** Clave de la caché de la guarda: textos de main y de la rama y toda la configuración que decide. */
 export function gateCacheKey(baseText: string, headText: string): string {
-  return hash(["gate-v2", hash(baseText), hash(headText), RUBRIC_VERSION, hash(SYSTEM_PROMPT), EVALUATOR_MODEL].join("|"));
+  return hash([editorialConfigKey(), hash(baseText), hash(headText)].join("|"));
 }
 
 export async function editorialGate(g: GateInput): Promise<GuardDecision> {
   const calibration = await prisma.editorialCalibration.findFirst({ orderBy: { createdAt: "desc" } });
   if (calibration?.status !== "ok") return { code: HOLD, reason: `IA editorial suspendida (calibración ${calibration?.status ?? "pendiente"})` };
   if (g.now.getTime() - calibration.createdAt.getTime() > CALIBRATION_MAX_AGE_DAYS * DAY_MS) return { code: HOLD, reason: "IA editorial: la calibración ha caducado" };
-  if (!calibration.validityAt || g.now.getTime() - calibration.validityAt.getTime() > VALIDITY_MAX_AGE_DAYS * DAY_MS)
-    return { code: HOLD, reason: "IA editorial: sin validez reciente (nota frente a datos de Google)" };
-  if ((calibration.validityN ?? 0) < MIN_VALIDITY_N) return { code: HOLD, reason: `IA editorial: validez pendiente (${calibration.validityN ?? 0} de ${MIN_VALIDITY_N} artículos con datos)` };
-  if ((calibration.validityRho ?? -1) < MIN_GATE_RHO) return { code: HOLD, reason: `IA editorial: la nota no acompaña a los datos de Google (ρ ${calibration.validityRho})` };
+  const battery = await batteryState(g.now);
+  if (battery.status !== "ok") return { code: HOLD, reason: `IA editorial: ${battery.reason}` };
 
   const content = g.files.filter((f) => CONTENT_FILE.test(f));
   if (content.length !== 1) return { code: BLOCK, reason: `el PR tiene que cambiar el contenido de un solo artículo (cambia ${content.length})` };
@@ -69,48 +65,33 @@ export async function editorialGate(g: GateInput): Promise<GuardDecision> {
   const headMd = headSrc && contentFromSource(headSrc);
   if (!baseMd || !headMd) return { code: BLOCK, reason: `no se puede leer el texto de ${slug} en main o en la rama` };
 
-  // Cifras nuevas sin fuente: bloqueo determinista, antes de gastar evaluaciones.
-  const unsourced = unsourcedNewFigures(baseMd, headMd);
-  if (unsourced.length > 0) return { code: BLOCK, reason: `IA editorial bloquea: ${slug} añade cifras sin fuente (${unsourced.slice(0, 3).map((u) => u.figure).join(", ")})` };
-
-  const headDoc = extractArticleFromMarkdown(headMd, g.siteBase);
-  const baseDoc = extractArticleFromMarkdown(baseMd, g.siteBase);
-  // La decisión vale para esta pareja exacta main/rama con esta rúbrica, este prompt y este modelo.
-  const gateKey = gateCacheKey(baseDoc.text, headDoc.text);
+  const gateKey = gateCacheKey(baseMd, headMd);
   const cached = await prisma.editorialScore.findFirst({ where: { slug, contentHash: gateKey, kind: "gate" }, orderBy: { createdAt: "desc" } });
-  if (cached) return { code: cached.decision === "approve" ? ALLOW : BLOCK, reason: `IA editorial (ya evaluado): ${cached.reason}` };
-
-  const baseHollow = detectHollow(baseDoc.text);
-  const headHollow = detectHollow(headDoc.text);
-  // Dos evaluaciones independientes de la rama (y una tercera si discrepan más de un punto): vale la
-  // más baja, salvo el desempate, que toma la mediana. Un 9 solo cuenta si las dos lo confirman.
-  const evalHead = () => evaluateArticle({ url, doc: headDoc, hollow: headHollow, similar: [] }, g.runner);
-  const [base, head, head2] = await Promise.all([evaluateArticle({ url, doc: baseDoc, hollow: baseHollow, similar: [] }, g.runner), evalHead(), evalHead()]);
-  let headFinal: number;
-  if (Math.abs(head.score - head2.score) > DISAGREEMENT) {
-    const third = await evalHead();
-    headFinal = [head.score, head2.score, third.score].sort((x, y) => x - y)[1];
-  } else if (Math.min(head.score, head2.score) >= EXCELLENT) {
-    headFinal = combineExcellent(head.score, head2.score);
+  let approve: boolean;
+  let reason: string;
+  if (cached) {
+    approve = cached.decision === "approve";
+    reason = `(ya evaluado) ${cached.reason}`;
   } else {
-    headFinal = Math.min(head.score, head2.score);
+    const d = await pairedDecision({ url, label: slug, baseMd, headMd, siteBase: g.siteBase, runner: g.runner });
+    approve = d.approve;
+    reason = d.reason;
+    if (d.evaluated && d.base && d.head) {
+      const common = { slug, url, rubricVersion: RUBRIC_VERSION, model: EVALUATOR_MODEL, createdAt: g.now };
+      const [b0, h0] = [d.base.evals[0], d.head.evals[0]];
+      await prisma.editorialScore.create({
+        data: { ...common, contentHash: hash(baseMd), kind: "gate-base", score: b0.score, finalScore: d.base.score, decision: "baseline", reason: "versión de main en la guarda", criteria: b0.criteria as object, deterministic: { evals: d.base.evals.map((e) => e.score) }, summary: b0.summary },
+      });
+      await prisma.editorialScore.create({
+        data: { ...common, contentHash: gateKey, kind: "gate", score: h0.score, finalScore: d.head.score, decision: approve ? "approve" : "block", reason, criteria: h0.criteria as object, deterministic: { evals: d.head.evals.map((e) => e.score), gain: d.gain }, summary: h0.summary },
+      });
+    }
   }
+  if (!approve) return { code: BLOCK, reason: `IA editorial ${reason}` };
 
-  const d = decide(headFinal, head.criteria);
-  const gain = Math.round((headFinal - base.score) * 100) / 100;
-  const approve = d.decision === "approve" && gain >= MIN_IMPROVEMENT;
-  const reason = approve
-    ? `aprueba: ${slug} pasa de ${base.score} a ${headFinal}`
-    : d.decision !== "approve"
-      ? `bloquea: ${slug} en la rama ${d.reason} (main ${base.score})`
-      : `bloquea: ${slug} solo mejora ${gain} (${base.score} → ${headFinal}; hace falta +${MIN_IMPROVEMENT})`;
-
-  const common = { slug, url, rubricVersion: RUBRIC_VERSION, model: EVALUATOR_MODEL, createdAt: g.now };
-  await prisma.editorialScore.create({
-    data: { ...common, contentHash: hash(baseDoc.text), kind: "gate-base", score: base.score, finalScore: base.score, decision: "baseline", reason: "versión de main en la guarda", criteria: base.criteria as object, deterministic: baseHollow as object, summary: base.summary },
-  });
-  await prisma.editorialScore.create({
-    data: { ...common, contentHash: gateKey, kind: "gate", score: head.score, finalScore: headFinal, decision: approve ? "approve" : "block", reason, criteria: head.criteria as object, deterministic: headHollow as object, summary: head.summary },
-  });
-  return { code: approve ? ALLOW : BLOCK, reason: `IA editorial ${reason}` };
+  // Aprobada: solo se fusiona dentro del piloto medido.
+  if (!g.orbitaTaskId) return { code: HOLD, reason: `IA editorial ${reason}; falta la tarea para reservar plaza en el piloto` };
+  const seat = await reservePilot({ orbitaTaskId: g.orbitaTaskId, page: url }, g.now);
+  if (!seat.ok) return { code: HOLD, reason: `IA editorial ${reason}; retenida: ${seat.reason}` };
+  return { code: ALLOW, reason: `IA editorial ${reason} (${seat.note})` };
 }

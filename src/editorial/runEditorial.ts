@@ -13,6 +13,7 @@ import { recordAlert } from "../alerts/recordAlert";
 import { getPublishedArticleUrls } from "../embeddings/fetchArticleContent";
 import { extractArticle, extractArticleFromMarkdown } from "./article";
 import { DEFECTIVE_ARTICLE, DEFECTIVE_MAX_SCORE, DEFECTIVE_SLUG } from "./fixtures/defective";
+import { batteryDue, runBattery } from "./battery";
 import { detectHollow } from "./hollow";
 import { EVALUATOR_MODEL, claudeRunner, evaluateArticle, type Runner } from "./evaluator";
 import { EXCELLENT, RUBRIC_VERSION, combineExcellent, decide } from "./rubric";
@@ -178,8 +179,9 @@ async function runCalibration(ctx: Ctx, articles: { slug: string; url: string }[
 
 /** Validez con todos los artículos que tienen nota y datos de GSC, no solo las 6 referencias. */
 async function validityPairs(outcomes: { slug: string; outcome: number }[]): Promise<[number, number][]> {
+  // Solo notas de la rúbrica y el modelo actuales: una nota de otra versión no es comparable.
   const latest = await prisma.editorialScore.findMany({
-    where: { kind: { in: ["routine", "calibration"] }, slug: { in: outcomes.map((o) => o.slug) } },
+    where: { kind: { in: ["routine", "calibration"] }, slug: { in: outcomes.map((o) => o.slug) }, rubricVersion: RUBRIC_VERSION, model: EVALUATOR_MODEL },
     orderBy: { createdAt: "desc" },
     distinct: ["slug"],
     select: { slug: true, finalScore: true },
@@ -216,15 +218,24 @@ export async function runEditorial(deps: EditorialDeps = {}): Promise<string[]> 
     return notes;
   }
   // La validez se vuelve a mirar en cada pasada con las notas nuevas: no hace falta esperar al mes.
+  // Diagnóstico, no permiso: la fusión la autoriza el piloto medido (pilot.ts). Solo una correlación
+  // claramente al revés suspende.
   const validity = await validityPairs((await loadOutcomes(ctx.base, now)).filter((o) => articles.some((a) => a.slug === o.slug)));
+  const rho = validity.length >= 3 ? spearman(validity) : null;
   await prisma.editorialCalibration.update({
     where: { id: calibration.id },
-    data: { validityN: validity.length, validityRho: validity.length >= 3 ? spearman(validity) : null, validityAt: now },
+    data: { validityN: validity.length, validityRho: rho, validityAt: now },
   });
-  if (validity.length >= MIN_VALIDITY_N && spearman(validity) < MIN_SPEARMAN) {
-    const detail = `correlación nota–GSC ${spearman(validity)} con ${validity.length} artículos`;
+  if (validity.length >= MIN_VALIDITY_N && rho !== null && rho < MIN_SPEARMAN) {
+    const detail = `correlación nota–GSC ${rho} con ${validity.length} artículos`;
     await saveCalibration(now, "inverted", detail, calibration.references as unknown as Reference[]);
     notes.push(`editorial suspendida: ${detail}`);
+    return notes;
+  }
+
+  // Batería de defectos: al cambiar la configuración, cada 30 días y, si falla, a diario.
+  if (await batteryDue(now)) {
+    notes.push(await runBattery(ctx.runner, now, ctx.base));
     return notes;
   }
 

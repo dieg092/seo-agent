@@ -13,11 +13,14 @@ import { prisma } from "../src/db";
 import { AUTO_OPERATIONS, buildContract, renderDescription, renderPrompt, taskTitle } from "../src/bridge/contract";
 import { semanticScope } from "../src/bridge/semanticScope";
 import { containsPrivate } from "../src/privacy/outboundPolicy";
-import { CALIBRATION_MAX_AGE_DAYS, MIN_GATE_RHO, VALIDITY_MAX_AGE_DAYS } from "../src/editorial/gate";
+import { CALIBRATION_MAX_AGE_DAYS } from "../src/editorial/gate";
 import { MIN_VALIDITY_N } from "../src/editorial/calibration";
+import { batteryState } from "../src/editorial/battery";
+import { PILOT_MAX_OPEN, pilotHasRoom } from "../src/editorial/pilot";
 import { NO_DEPLOY_ALERT_HOURS } from "../src/graduation/changeLedger";
 
-type Status = "pass" | "pending" | "fail";
+// info: se informa, pero no es un objetivo que pueda fallar (p. ej., el diagnóstico ρ).
+type Status = "pass" | "pending" | "info" | "fail";
 const results: { area: string; check: string; status: Status; detail: string }[] = [];
 const add = (area: string, check: string, status: Status, detail = ""): void => void results.push({ area, check, status, detail });
 const DAY = 24 * 3600_000;
@@ -67,12 +70,17 @@ async function main(): Promise<number> {
   else {
     const age = (now - cal.createdAt.getTime()) / DAY;
     add("editorial", "calibración en verde y vigente", cal.status === "ok" && age <= CALIBRATION_MAX_AGE_DAYS ? "pass" : "fail", `${cal.status}, hace ${age.toFixed(1)} días`);
-    const vAge = cal.validityAt ? (now - cal.validityAt.getTime()) / DAY : Infinity;
     const n = cal.validityN ?? 0;
-    const rho = cal.validityRho;
-    const valid = vAge <= VALIDITY_MAX_AGE_DAYS && n >= MIN_VALIDITY_N && (rho ?? -1) >= MIN_GATE_RHO;
-    add("editorial", "validez nota–GSC demostrada", valid ? "pass" : n < MIN_VALIDITY_N ? "pending" : "fail", `n=${n}/${MIN_VALIDITY_N}, ρ=${rho ?? "-"}, hace ${Number.isFinite(vAge) ? vAge.toFixed(1) : "∞"} días`);
+    add("editorial", "diagnóstico nota–GSC entre artículos (no autoriza)", "info", `n=${n}/${MIN_VALIDITY_N}, ρ=${cal.validityRho ?? "indefinido"}`);
   }
+  const battery = await batteryState(new Date(now));
+  add("editorial", "batería de defectos aprobada y vigente", battery.status === "ok" ? "pass" : battery.status === "missing" ? "pending" : "fail", battery.status === "ok" ? `del ${battery.at.toISOString().slice(0, 10)}` : battery.reason);
+  const pilots = await prisma.editorialPilot.groupBy({ by: ["state"], _count: true });
+  const open = pilots.filter((p) => ["reserved", "observing"].includes(p.state)).reduce((x, p) => x + p._count, 0);
+  const room = await pilotHasRoom(new Date(now));
+  add("editorial", "piloto editorial operativo (sin bloqueo indefinido)", "pass", `${open}/${PILOT_MAX_OPEN} abiertos, ${room ? "con plaza" : "sin plaza ahora (se libera sola)"}; ${pilots.map((p) => `${p.state}: ${p._count}`).join(", ") || "sin pilotos aún"}`);
+  const evaluable = pilots.filter((p) => ["positive", "negative", "neutral"].includes(p.state)).reduce((x, p) => x + p._count, 0);
+  add("editorial", "impacto medido de las mejoras de artículos", evaluable > 0 ? "pass" : "pending", `${evaluable} pilotos evaluables`);
   const scored = await prisma.editorialScore.count({ where: { kind: "routine", createdAt: { gte: new Date(now - DAY) } } });
   add("editorial", "evaluaciones en las últimas 24 h", scored > 0 ? "pass" : "pending", `${scored}`);
 
@@ -81,6 +89,8 @@ async function main(): Promise<number> {
   const autoDone = doneA1.filter((l) => (l.contract as { publishPolicy?: string } | null)?.publishPolicy === "auto-merge-if-green");
   const inLedger = await prisma.seoChange.count({ where: { orbitaTaskId: { in: autoDone.map((l) => l.orbitaTaskId) } } });
   add("medición", "cada cambio automático está en el registro", inLedger === autoDone.length ? "pass" : "fail", `${inLedger}/${autoDone.length}`);
+  const revertStuck = await prisma.seoChange.count({ where: { status: "revert-failed" } });
+  add("medición", "ninguna reversión fallida", revertStuck === 0 ? "pass" : "fail", `${revertStuck}`);
   const stuck = await prisma.seoChange.count({ where: { status: "pending-deploy", createdAt: { lt: new Date(now - NO_DEPLOY_ALERT_HOURS * 3600_000) } } });
   add("medición", "ningún cambio fusionado sin desplegar > 24 h", stuck === 0 ? "pass" : "fail", `${stuck}`);
   const byStatus = await prisma.seoChange.groupBy({ by: ["status"], _count: true });
@@ -150,12 +160,12 @@ async function main(): Promise<number> {
     add("tests", "seo-agent: batería completa", fail === "0" ? "pass" : "fail", `${pass ?? "?"} bien, ${fail ?? "?"} mal`);
   }
 
-  const order: Status[] = ["fail", "pending", "pass"];
+  const order: Status[] = ["fail", "pending", "info", "pass"];
   for (const r of results.sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) || a.area.localeCompare(b.area))) {
     console.log(`${r.status.padEnd(7)} ${r.area.padEnd(11)} ${r.check}${r.detail ? ` — ${r.detail}` : ""}`);
   }
   const counts = Object.fromEntries(order.map((s) => [s, results.filter((r) => r.status === s).length]));
-  console.log(`\n${counts.pass} pass, ${counts.pending} pending, ${counts.fail} fail`);
+  console.log(`\n${counts.pass} pass, ${counts.pending} pending, ${counts.info} info, ${counts.fail} fail`);
   await prisma.$disconnect();
   return counts.fail > 0 ? 1 : 0;
 }

@@ -519,11 +519,48 @@ model SeoChange {
   // un negativo se confirma con una segunda ventana antes de revertir
   confirmAfter    DateTime?
   alertedAt       DateTime?
+  // reversión: negative-confirmed → revert-open → revert-merged → revert-verified (desplegada)
+  revertSha        String?
+  revertVerifiedAt DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([status])
   @@index([changeId8])
+  @@schema("seo_agent")
+}
+
+/// Piloto editorial: mejoras de artículos fusionadas solas, pocas y medidas una a una.
+model EditorialPilot {
+  id           String    @id @default(uuid())
+  orbitaTaskId String    @unique
+  page         String
+  // reserved | observing | released | positive | negative | neutral | inconclusive | not-evaluable
+  state        String
+  reservedAt   DateTime
+  deployedAt   DateTime?
+  closedAt     DateTime?
+  outcome      String?
+  detail       Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([state])
+  @@schema("seo_agent")
+}
+
+/// Batería de artículos con defectos conocidos: la guarda editorial completa tiene que detectarlos.
+model EditorialBattery {
+  id             String   @id @default(uuid())
+  configKey      String
+  passed         Boolean
+  detected       Int
+  total          Int
+  criticalMissed Int
+  detail         Json
+  createdAt      DateTime @default(now())
+
+  @@index([configKey, createdAt])
   @@schema("seo_agent")
 }
 

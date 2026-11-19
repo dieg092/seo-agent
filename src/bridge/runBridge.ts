@@ -13,6 +13,7 @@ import { containsPrivate } from "../privacy/outboundPolicy";
 import { InvalidTransitionError, transition, type LifecycleEvent } from "../opportunity/lifecycle";
 import { lifecycleData, lifecycleOf } from "../prioritization/prioritize";
 import { dismissalValue, type PriorityFactors } from "../prioritization/priority";
+import { pilotHasRoom } from "../editorial/pilot";
 import { AUTO_DAILY_CAP, buildContract, isAutoCandidate, promoteToAuto, renderDescription, renderPrompt, taskTitle, validateContract, type SeoTaskContract } from "./contract";
 import { expiryReason, planCreations, reconcile, type TaskStatus } from "./plan";
 import { orbitaCli, type OrbitaClient } from "./orbitaCli";
@@ -157,6 +158,7 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
   if (dry) return result;
 
   const dir = mkdtempSync(join(tmpdir(), "seo-bridge-"));
+  let pilotRoom: boolean | undefined;
   try {
     for (const c of plan) {
       const opp = await prisma.opportunity.findUnique({ where: { id: c.id } });
@@ -169,6 +171,9 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
       const promoted = autoOn && control?.masterSwitch === "on" && control.brakeState === "off" ? promoteToAuto(built, autoLast24h) : null;
       // Sin cupo hoy, un candidato automático espera a mañana en vez de volver a proponerse.
       if (!promoted && autoOn && isAutoCandidate(built) && !built.tainted && autoLast24h >= AUTO_DAILY_CAP) continue;
+      // Mejoras de artículos: solo se crean cuando el piloto editorial tiene plaza (si no, se quedan
+      // abiertas y retenidas en Órbita); el hallazgo espera y vuelve a planearse en otra pasada.
+      if (promoted && built.operation === "content-improve" && !(pilotRoom ??= await pilotHasRoom(now))) continue;
       const contract = promoted ?? built;
       const auto = promoted !== null;
       const errors = validateContract(contract, { allowAutoMerge: auto });
