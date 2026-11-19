@@ -2,7 +2,7 @@
 // Uso: pnpm test:db:setup  (el script ya exporta SEO_ENV=test)
 import { spawnSync } from "child_process";
 import { isTestEnv } from "../src/env";
-import { assertSafeDatabase } from "../src/db";
+import { assertSafeDatabase, describeDatabase } from "../src/db";
 
 if (!isTestEnv()) {
   console.error("test:db:setup solo se ejecuta con SEO_ENV=test.");
@@ -22,7 +22,7 @@ function prisma(args: string[], input?: string): number {
   return result.status ?? 1;
 }
 
-console.log(`Migrando la BD de tests: ${process.env.DATABASE_URL}`);
+console.log(`Migrando la BD de tests: ${describeDatabase(process.env.DATABASE_URL)}`);
 
 // En Neon el esquema y la extensión ya existen; en una BD local nueva hay que
 // crearlos antes de las migraciones, que dan ambos por hechos.
