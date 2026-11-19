@@ -26,6 +26,13 @@ test("la portada con puntuación detrás no es privada y redactar dos veces da l
   assert.equal(containsPrivate({ p }), false);
 });
 
+test("rutas del sistema y el canario técnico no son privados; una boda llamada como un directorio sí", () => {
+  const t = "pnpm usó /usr/bin/tsc y /opt/homebrew/bin/node; la canónica es https://miwebdeboda.com/seo-canario y /seo-canario.";
+  assert.equal(redactText(t), t);
+  assert.ok(redactText("invitación /home/i/abc").includes(REDACTED));
+  assert.ok(redactText("web /tmp").includes(REDACTED));
+});
+
 test("rutas privadas de la web aunque parezcan técnicas", () => {
   assert.ok(redactText("https://miwebdeboda.com/dominio-propio/x").includes(REDACTED));
 });

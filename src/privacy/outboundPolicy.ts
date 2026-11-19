@@ -14,6 +14,8 @@ const PERSONAL_KEY =
 // URLs absolutas (cualquier host) y rutas sueltas que empiezan por «/».
 const ABSOLUTE_URL = /\bhttps?:\/\/[^\s"'<>()\]]+/gi;
 const BARE_PATH = /(^|[\s("'«`])(\/[a-z0-9][a-z0-9\-_.~%/]*(?:\?[^\s"'<>»)]*)?)/gi;
+// con un subdirectorio que no sea «i» (así /<boda>/i/<token> nunca pasa por ruta del sistema)
+const LOCAL_FS = /^\/(Users|usr|opt|tmp|private|var|etc|home|bin|sbin|Applications|Library|System|Volumes|dev|proc)\/(?!i(\/|$))[^/\s]+/;
 // Dominio de la web sin esquema (miwebdeboda.com/algo).
 const SITE_NO_SCHEME = new RegExp(`(?<![/\\w.-])(?:www\\.)?${SITE_HOST.replace(".", "\\.")}(/[^\\s"'<>()\\]]*)?`, "gi");
 
@@ -46,6 +48,8 @@ export function redactText(text: string): string {
     return privateOrUnreadable(`https://${SITE_HOST}${clean || "/"}`) ? REDACTED + raw.slice(clean.length) : m;
   });
   out = out.replace(BARE_PATH, (m, pre: string, path: string) => {
+    // rutas del sistema de ficheros (/usr/bin/tsc, /tmp/x…): no son páginas de la web
+    if (LOCAL_FS.test(path)) return m;
     const clean = path.replace(/[.,;:!?]+$/, "");
     const tail = path.slice(clean.length);
     return pre + (privateOrUnreadable(clean) ? REDACTED : clean) + tail;

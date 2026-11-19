@@ -37,6 +37,8 @@ export const PUBLIC_FIRST_SEGMENTS: readonly string[] = [
   "privacidad",
   "profesionales",
   "robots.txt",
+  // página técnica del agente SEO (noindex, sin datos de nadie)
+  "seo-canario",
   "sitemap.xml",
   "sitemap-images.xml",
   "terminos",

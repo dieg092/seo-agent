@@ -10,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { prisma } from "../src/db";
 import { readControl } from "../src/brake/control";
+import { containsPrivate } from "../src/privacy/outboundPolicy";
 import { recordAlert } from "../src/alerts/recordAlert";
 import { BLOCK, HOLD, guardDecision, type GuardStage, type PullRequestInfo } from "../src/bridge/guard";
 import { parseNumstat, type DiffFile } from "../src/bridge/scopeCheck";
@@ -39,13 +40,14 @@ function selfIntact(): boolean {
 }
 
 /** El PR por la API de GitHub: título, etiquetas y ficheros (un renombrado cuenta como «origen => destino»). */
-function readPullRequest(url: string): (PullRequestInfo & { repo: string; headSha: string }) | undefined {
+function readPullRequest(url: string): (PullRequestInfo & { repo: string; headSha: string; body: string }) | undefined {
   try {
     const m = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(url);
     if (!m) return undefined;
     const [, repo, num] = m;
-    const pr = JSON.parse(run("gh", ["pr", "view", url, "--json", "title,labels,state,baseRefName,headRefOid"])) as {
+    const pr = JSON.parse(run("gh", ["pr", "view", url, "--json", "title,body,labels,state,baseRefName,headRefOid"])) as {
       headRefOid: string;
+      body: string;
       title: string;
       labels: { name: string }[];
       state: string;
@@ -57,6 +59,7 @@ function readPullRequest(url: string): (PullRequestInfo & { repo: string; headSh
     return {
       repo,
       headSha: pr.headRefOid,
+      body: pr.body ?? "",
       title: pr.title,
       labels: pr.labels.map((l) => l.name),
       state: pr.state,
@@ -97,6 +100,10 @@ async function main(): Promise<number> {
   }
   const pr = stage === "premerge" ? readPullRequest(target!) : undefined;
   let d = guardDecision({ stage, control, link, diff, pr, selfIntact: stage === "premerge" ? selfIntact() : undefined });
+  // El texto del PR (lo escribe la IA) tampoco puede llevar nada privado.
+  if (d.code === 0 && pr && containsPrivate({ title: pr.title, body: pr.body })) {
+    d = { code: BLOCK, reason: "el título o la descripción del PR contienen una URL o un dato privado" };
+  }
   // Mejoras de artículos: además, la IA editorial tiene que aprobar la versión de la rama (B5).
   if (d.code === 0 && stage === "premerge" && link?.operation === "content-improve" && pr) {
     const urls = ((link.contract as { urls?: unknown } | null)?.urls ?? []) as string[];
