@@ -99,6 +99,19 @@ export const OPERATION_SCOPES: Readonly<Record<string, OperationScope>> = {
       "la IA editorial aprueba la versión de la rama (nota ≥ 7 y al menos 0,5 por encima de la de main)",
     ],
   },
+  // Revisión previa (scheduled.ts): corregir un artículo programado que aún no ha salido. Sin tocar
+  // posts.ts (ni la fecha de publicación ni la de actualización).
+  "content-prepublish-fix": {
+    allowedPaths: ["src/lib/blog/content/**"],
+    maxFilesChanged: 1,
+    maxLinesChanged: 400,
+    acceptance: [
+      "solo cambia el texto del artículo del contrato (su fichero .ts en src/lib/blog/content; el .md de al lado no se toca); posts.ts no se toca: el artículo sale el día previsto",
+      "corrige lo que dicen los criterios más flojos de la evidencia (weakest y reason), sin cambiar el slug, el título ni la intención del artículo",
+      "sin cifras nuevas (porcentajes, euros, «N de cada M», plazos) salvo las de «Datos admitidos», en un párrafo sobre lo mismo y citadas como se indica; nada de frases de relleno ni muletillas",
+      "la IA editorial aprueba la versión de la rama (nota ≥ 7 y al menos 0,5 por encima de la de main)",
+    ],
+  },
   "robots-restore-sitemap-directive": {
     allowedPaths: ["src/app/robots.ts"],
     maxFilesChanged: 1,
@@ -185,7 +198,7 @@ export function buildContract(opp: ContractOpportunity, deps: { now: Date; chang
     // Hallazgos que salen de páginas de terceros (competidores): nunca A1 ni fusión automática.
     tainted: TAINTED_FINDINGS.has(opp.findingType),
     risk: opp.severity === "critical" || opp.severity === "high" ? "high" : opp.severity === "medium" ? "medium" : "low",
-    tests: writes ? ["pnpm type-check", "pnpm seo:check", ...(["content-improve", "internal-links-batch", "image-alt"].includes(operation) ? ["pnpm blog:lint"] : [])] : [],
+    tests: writes ? ["pnpm type-check", "pnpm seo:check", ...(["content-improve", "content-prepublish-fix", "internal-links-batch", "image-alt"].includes(operation) ? ["pnpm blog:lint"] : [])] : [],
     acceptance: [...scope.acceptance, ...(writes ? ["diff dentro de allowedPaths y de los límites"] : [])],
     // Fase 3: solo propuestas. Ninguna tarea se fusiona sola hasta activar A1 (fase 4).
     publishPolicy: writes ? "pr-only" : "none",
@@ -218,6 +231,7 @@ export const AUTO_OPERATIONS: ReadonlySet<string> = new Set([
   "meta-title-description",
   "broken-internal-link-fix",
   "content-improve",
+  "content-prepublish-fix",
   "image-alt",
   "internal-links-batch",
   "robots-restore-sitemap-directive",

@@ -15,6 +15,7 @@ import { lifecycleData, lifecycleOf } from "../prioritization/prioritize";
 import { dismissalValue, type PriorityFactors } from "../prioritization/priority";
 import { factsForPrompt, renderFactsForPrompt, type Fact } from "../editorial/evidence";
 import { loadFacts } from "../editorial/evidenceStore";
+import { PREPUBLISH_FREEZE_DAYS, daysUntil } from "../editorial/scheduled";
 import { pilotHasRoom } from "../editorial/pilot";
 import { batteryState } from "../editorial/battery";
 import { AUTO_DAILY_CAP, buildContract, isAutoCandidate, promoteToAuto, renderDescription, renderPrompt, taskTitle, validateContract, type SeoTaskContract } from "./contract";
@@ -128,9 +129,16 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
     const open = await prisma.seoTaskLink.findMany({ where: { closedAt: null, taskStatus: "in_progress", contract: { path: ["publishPolicy"], equals: "auto-merge-if-green" } } });
     for (const link of open) {
       const old = now.getTime() - link.createdAt.getTime() > AUTO_TASK_MAX_DAYS * 86400_000;
-      const off = editorialOff && link.operation === "content-improve";
-      if (!old && !off) continue;
-      const why = off ? "IA editorial desactivada para esta configuración" : `más de ${AUTO_TASK_MAX_DAYS} días sin poder fusionarse`;
+      const off = editorialOff && (link.operation === "content-improve" || link.operation === "content-prepublish-fix");
+      // Corrección previa de un artículo que ya está a punto de salir: llega tarde, se publica como estaba.
+      const publishedAt = (link.contract as { evidence?: { publishedAt?: unknown } } | null)?.evidence?.publishedAt;
+      const late = link.operation === "content-prepublish-fix" && typeof publishedAt === "string" && daysUntil(publishedAt, now) < PREPUBLISH_FREEZE_DAYS;
+      if (!old && !off && !late) continue;
+      const why = off
+        ? "IA editorial desactivada para esta configuración"
+        : late
+          ? `el artículo sale el ${publishedAt} y la corrección no ha llegado a tiempo; se publica como estaba y después entra en las mejoras normales`
+          : `más de ${AUTO_TASK_MAX_DAYS} días sin poder fusionarse`;
       if (!(await orbita.cancelIfInProgress(link.orbitaTaskId, `Cerrada por seo-agent: ${why}.`))) continue;
       await (deps.closePr ?? ghClosePr)(link.orbitaTaskId.slice(0, 8), `Cerrado por seo-agent: ${why}.`).catch(() => {});
       result.expired += 1;
@@ -211,7 +219,7 @@ export async function runBridge(deps: { orbita?: OrbitaClient; now?: Date; dryRu
       const chosen = promoted ?? built;
       // Mejoras de artículos: la IA recibe los datos admitidos del tema (las únicas cifras nuevas que puede usar).
       const contract: SeoTaskContract =
-        chosen.operation === "content-improve" ? { ...chosen, admittedFacts: renderFactsForPrompt(factsForPrompt([opp.title, opp.page ?? "", JSON.stringify(opp.detail ?? "")].join(" "), (facts ??= await loadFacts(now)), 30)).slice(0, 7000) || undefined } : chosen;
+        chosen.operation === "content-improve" || chosen.operation === "content-prepublish-fix" ? { ...chosen, admittedFacts: renderFactsForPrompt(factsForPrompt([opp.title, opp.page ?? "", JSON.stringify(opp.detail ?? "")].join(" "), (facts ??= await loadFacts(now)), 30)).slice(0, 7000) || undefined } : chosen;
       const auto = promoted !== null;
       const errors = validateContract(contract, { allowAutoMerge: auto });
       if (errors.length > 0) {

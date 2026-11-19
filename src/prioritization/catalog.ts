@@ -77,6 +77,8 @@ const CATALOG: Record<FindingType, CatalogEntry> = {
   "content-intent-mismatch": { severity: "medium", confidence: "derived", autonomy: "A2", lane: "content", operation: null, indexationRisk: false },
   "content-seasonal": { severity: "low", confidence: "derived", autonomy: "A2", lane: "content", operation: null, indexationRisk: false },
   "editorial-low-score": { severity: "medium", confidence: "derived", autonomy: "A1", lane: "content", operation: "content-improve", indexationRisk: false },
+  // Artículo programado que la revisión previa no aprueba: se corrige antes de que salga (scheduled.ts).
+  "editorial-prepublish": { severity: "medium", confidence: "derived", autonomy: "A1", lane: "content", operation: "content-prepublish-fix", indexationRisk: false },
   "visibility-declining": { severity: "medium", confidence: "derived", autonomy: "A1", lane: "content", operation: "investigation", indexationRisk: false },
   "segment-declining": { severity: "low", confidence: "derived", autonomy: "A1", lane: "content", operation: "investigation", indexationRisk: false },
   "image-opportunity": { severity: "low", confidence: "derived", autonomy: "A1", lane: "content", operation: "image-alt", indexationRisk: false },

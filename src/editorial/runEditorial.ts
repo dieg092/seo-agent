@@ -13,7 +13,9 @@ import { recordAlert } from "../alerts/recordAlert";
 import { getPublishedArticleUrls } from "../embeddings/fetchArticleContent";
 import { extractArticle, extractArticleFromMarkdown } from "./article";
 import { DEFECTIVE_ARTICLE, DEFECTIVE_MAX_SCORE, DEFECTIVE_SLUG } from "./fixtures/defective";
-import { batteryDue, stepBattery } from "./battery";
+import { batteryDue, batteryState, stepBattery } from "./battery";
+import { prepublishStep } from "./prepublish";
+import { appMainRepo, loadScheduled, type ScheduledArticle } from "./scheduled";
 import { budgetedRunner, orbitaBusy, quotaUntil } from "./budget";
 import { EditorialDeferred } from "./modelErrors";
 import { detectHollow } from "./hollow";
@@ -33,6 +35,7 @@ export interface EditorialDeps {
   runner?: Runner;
   fetchHtml?: (url: string) => Promise<string>;
   listArticles?: () => Promise<{ slug: string; url: string }[]>;
+  scheduled?: () => Promise<(ScheduledArticle & { md: string })[]>;
 }
 
 /** Artículo = /blog/<categoría>/<slug>; /blog/<categoría> es una página de categoría y no se evalúa. */
@@ -257,6 +260,22 @@ async function editorialPass(deps: EditorialDeps, now: Date): Promise<string[]> 
     // Batería: con el runner real va con presupuesto y cediendo el paso a Órbita en cada llamada.
     notes.push(await stepBattery(deps.runner ?? claudeRunner, now, ctx.base, { unbudgeted: Boolean(deps.runner) }));
     return notes;
+  }
+
+  // Revisión previa de los programados: antes que lo publicado, para que haya margen de corregir.
+  if ((await batteryState(now)).status === "ok") {
+    // En pruebas (runner inyectado) solo con la lista inyectada; si no se puede leer el repo, se sigue con lo publicado.
+    let scheduled: (ScheduledArticle & { md: string })[] = [];
+    try {
+      scheduled = deps.scheduled ? await deps.scheduled() : deps.runner ? [] : loadScheduled(appMainRepo(), ctx.base, now);
+    } catch (e) {
+      notes.push(`revisión previa: no se pueden leer los programados (${(e as Error).message.slice(0, 80)})`);
+    }
+    const note = await prepublishStep(scheduled, runner, ctx.base, now);
+    if (note) {
+      notes.push(note);
+      return notes;
+    }
   }
 
   const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));

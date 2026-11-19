@@ -201,14 +201,14 @@ test("tareas automáticas atascadas: con el PR abierto 30 días, o mejoras de ar
   const orbita = new FakeOrbita();
   const closed: string[] = [];
   const closePr = async (id8: string) => void closed.push(id8);
-  const mk = async (n: number, operation: string, ageDays: number) => {
+  const mk = async (n: number, operation: string, ageDays: number, publishedAt?: string) => {
     const opp = await seed(n, { operation, stableKey: key(n), sourceRefId: `${PREFIX}${n}`, state: "in_progress" });
     const t = await orbita.add({ title: "x", description: "x", priority: "high", labels: ["seo"], metadataFile: __filename, dedupeKey: `d${n}`, aiPrompt: "p", auto: true });
     orbita.tasks.get(t.id)!.status = "in_progress";
     await prisma.seoTaskLink.create({
       data: {
         opportunityId: opp.id, stableKey: opp.stableKey, orbitaTaskId: t.id, findingType: opp.findingType, operation, page: opp.page, lane: "content", autonomy: "A1",
-        contract: { autonomy: "A1", operation, publishPolicy: "auto-merge-if-green" }, taskStatus: "in_progress",
+        contract: { autonomy: "A1", operation, publishPolicy: "auto-merge-if-green", ...(publishedAt ? { evidence: { publishedAt } } : {}) }, taskStatus: "in_progress",
         expiresAt: new Date(NOW.getTime() + 30 * DAY), createdAt: new Date(NOW.getTime() - ageDays * DAY),
       },
     });
@@ -217,14 +217,19 @@ test("tareas automáticas atascadas: con el PR abierto 30 días, o mejoras de ar
   const old = await mk(1, "meta-title-description", 31);
   const young = await mk(2, "meta-title-description", 3);
   const article = await mk(3, "content-improve", 3);
+  const day = (d: number) => new Date(NOW.getTime() + d * DAY).toISOString().slice(0, 10);
+  const lateFix = await mk(4, "content-prepublish-fix", 3, day(2));
+  const earlyFix = await mk(5, "content-prepublish-fix", 3, day(20));
   await runBridge({ orbita, now: NOW, closePr });
   assert.equal(orbita.tasks.get(old)!.status, "cancelled");
+  assert.equal(orbita.tasks.get(lateFix)!.status, "cancelled", "corrección previa que ya no llega antes de publicarse");
+  assert.equal(orbita.tasks.get(earlyFix)!.status, "in_progress");
   assert.equal(orbita.tasks.get(young)!.status, "in_progress");
   assert.equal(orbita.tasks.get(article)!.status, "in_progress", "la IA editorial no está desactivada");
   await prisma.editorialBatteryRun.create({ data: { configKey: batteryKey(), attempt: 3, status: "disabled-quality", startedAt: NOW } });
   await runBridge({ orbita, now: new Date(NOW.getTime() + 60_000), closePr });
   assert.equal(orbita.tasks.get(article)!.status, "cancelled");
-  assert.deepEqual(closed.sort(), [old.slice(0, 8), article.slice(0, 8)].sort());
+  assert.deepEqual(closed.sort(), [old.slice(0, 8), lateFix.slice(0, 8), article.slice(0, 8), earlyFix.slice(0, 8)].sort());
   await runBridge({ orbita, now: new Date(NOW.getTime() + 120_000), closePr });
   const o = await prisma.opportunity.findUniqueOrThrow({ where: { stableKey: key(1) } });
   assert.equal(o.state, "dismissed", "no se vuelve a crear para la misma clave");

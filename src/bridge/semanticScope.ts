@@ -248,6 +248,9 @@ export function semanticScope(operation: string, files: FileVersions[], contract
       return checkBrokenLinks(files);
     case "content-improve":
       return checkContent(files);
+    case "content-prepublish-fix":
+      if (files.some((f) => f.path === "src/lib/blog/posts.ts")) return { ok: false, reason: "posts.ts: una corrección previa no cambia ninguna fecha" };
+      return checkContent(files);
     case "image-alt":
       return checkImageAlt(files);
     case "internal-links-batch":

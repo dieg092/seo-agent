@@ -55,7 +55,8 @@ export async function reconcileChanges(now: Date, alert: typeof recordAlert = re
         findingType: link.findingType,
         operation: link.operation,
         page: link.page,
-        status: link.findingType === "seo-canary" ? "not-evaluable" : "pending-deploy",
+        // Las correcciones previas cambian un artículo que aún no ha salido: no hay antes con el que comparar.
+        status: link.findingType === "seo-canary" || link.operation === "content-prepublish-fix" ? "not-evaluable" : "pending-deploy",
         createdAt: link.closedAt ?? now,
       },
     });

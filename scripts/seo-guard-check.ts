@@ -172,7 +172,7 @@ async function check(): Promise<number> {
     }
   }
   // Mejoras de artículos: además, la IA editorial tiene que aprobar la versión de la rama (B5).
-  if (d.code === 0 && stage === "premerge" && link?.operation === "content-improve" && pr) {
+  if (d.code === 0 && stage === "premerge" && (link?.operation === "content-improve" || link?.operation === "content-prepublish-fix") && pr) {
     const urls = ((link.contract as { urls?: unknown } | null)?.urls ?? []) as string[];
     d = await editorialGate({
       files: pr.files.map((f) => f.path),
@@ -191,6 +191,7 @@ async function check(): Promise<number> {
       runner: budgetedRunner(claudeRunner, "guard"),
       now: new Date(),
       orbitaTaskId: link.orbitaTaskId,
+      prepublish: link.operation === "content-prepublish-fix",
     });
   }
   console.log(d.reason);

@@ -20,6 +20,7 @@ import { batteryState } from "./battery";
 import { reservePilot } from "./pilot";
 import { factsHash, type Fact } from "./evidence";
 import { loadFacts } from "./evidenceStore";
+import { PREPUBLISH_FREEZE_DAYS, daysUntil, parsePosts } from "./scheduled";
 
 export { MIN_IMPROVEMENT, DISAGREEMENT } from "./paired";
 /** Una calibración vale 35 días (se rehace cada 30). */
@@ -37,6 +38,8 @@ export interface GateInput {
   readFile: (path: string, ref: string) => Promise<string | null>;
   runner: Runner;
   now: Date;
+  /** Corrección previa (content-prepublish-fix): el artículo aún no ha salido; sin piloto, con fecha tope. */
+  prepublish?: boolean;
   /** Tarea de Órbita del PR: la plaza del piloto se reserva a su nombre. */
   orbitaTaskId?: string;
 }
@@ -61,6 +64,14 @@ export async function editorialGate(g: GateInput): Promise<GuardDecision> {
   const slug = `${cat}/${name}`;
   const url = `${g.siteBase}/blog/${slug}`;
   if (!g.contractUrls.includes(url)) return { code: BLOCK, reason: `el artículo cambiado (${slug}) no es el del contrato` };
+
+  if (g.prepublish) {
+    // Tiene que seguir programado y con margen; si no, se retiene (el puente la cancela sin contar para el freno).
+    const posts = await g.readFile("src/lib/blog/posts.ts", g.baseRef);
+    const entry = posts ? parsePosts(posts).find((p) => p.contentPath === content[0]) : undefined;
+    if (!entry) return { code: HOLD, reason: `revisión previa: ${slug} no está en posts.ts de main` };
+    if (daysUntil(entry.publishedAt, g.now) < PREPUBLISH_FREEZE_DAYS) return { code: HOLD, reason: `revisión previa: ${slug} sale el ${entry.publishedAt}; ya no se corrige antes de publicarse` };
+  }
 
   const [baseSrc, headSrc] = await Promise.all([g.readFile(content[0], g.baseRef), g.readFile(content[0], g.headRef)]);
   const baseMd = baseSrc && contentFromSource(baseSrc);
@@ -92,6 +103,8 @@ export async function editorialGate(g: GateInput): Promise<GuardDecision> {
   }
   if (!approve) return { code: BLOCK, reason: `IA editorial ${reason}` };
 
+  // Corrección previa aprobada: el artículo aún no está publicado, no hay nada que medir ni que proteger.
+  if (g.prepublish) return { code: ALLOW, reason: `IA editorial ${reason} (corrección previa a la publicación)` };
   // Aprobada: solo se fusiona dentro del piloto medido.
   if (!g.orbitaTaskId) return { code: HOLD, reason: `IA editorial ${reason}; falta la tarea para reservar plaza en el piloto` };
   const seat = await reservePilot({ orbitaTaskId: g.orbitaTaskId, page: url }, g.now);

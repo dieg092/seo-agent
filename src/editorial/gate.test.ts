@@ -216,3 +216,20 @@ test("content-improve: contrato A1 válido con fusión automática y alcance de 
   assert.equal(checkScope("content-improve", [{ path: FILE, added: 120, deleted: 80 }, { path: "src/lib/blog/posts.ts", added: 1, deleted: 1 }]).ok, true);
   assert.equal(checkScope("content-improve", [{ path: "src/components/x.tsx", added: 1, deleted: 0 }]).ok, false);
 });
+
+const POSTS = (date: string) => `import contentAfter from "./content/organizar-boda/after-party";\nexport const BLOG_POSTS = [\n  {\n    slug: "after-party",\n    content: contentAfter,\n    categorySlug: "organizar-boda",\n    publishedAt: "${date}",\n  },\n];\n`;
+const prepublishInput = (date: string, over: Partial<GateInput> = {}) =>
+  input({ files: [FILE], prepublish: true, readFile: async (p, ref) => (p.endsWith("posts.ts") ? POSTS(date) : ref === "main" ? MAIN : HEAD), ...over });
+
+test("corrección previa: aprobada se fusiona sin plaza del piloto; a menos de 3 días de salir se retiene", async () => {
+  const ok = await editorialGate(prepublishInput("2026-12-20", { runner: runner(6, 7.6).r }));
+  assert.equal(ok.code, 0, ok.reason);
+  assert.match(ok.reason, /corrección previa a la publicación/);
+  assert.equal(await prisma.editorialPilot.count(), 0, "no gasta plaza del piloto");
+  const late = await editorialGate(prepublishInput("2026-11-20"));
+  assert.equal(late.code, 75);
+  assert.match(late.reason, /ya no se corrige antes de publicarse/);
+  const HEAD2 = src("## Plazos\\n\\nOtro texto nuevo del artículo sobre la fiesta.");
+  const blocked = await editorialGate(prepublishInput("2026-12-20", { runner: runner(6, 6.2).r, readFile: async (p, ref) => (p.endsWith("posts.ts") ? POSTS("2026-12-20") : ref === "main" ? MAIN : HEAD2) }));
+  assert.equal(blocked.code, 1, "si la rama no aprueba, bloquea como siempre (y se corrige en otra ronda)");
+});

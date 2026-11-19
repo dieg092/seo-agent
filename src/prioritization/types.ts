@@ -71,6 +71,7 @@ export type FindingType =
   | "topic-cluster-gap"
   | "competitor-gap"
   | "editorial-low-score"
+  | "editorial-prepublish"
   | "content-intent-mismatch"
   | "content-seasonal";
 

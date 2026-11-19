@@ -16,7 +16,7 @@ import {
 } from "./annexB";
 import { extractStrategyFindings } from "../strategy/keywords";
 import { extractCompetitorGaps } from "../competitors/gaps";
-import { extractEditorialFindings, type LatestScore } from "../editorial/findings";
+import { extractEditorialFindings, extractPrepublishFindings, type LatestScore, type PrepublishScore } from "../editorial/findings";
 import { extractIntentMismatchFindings, extractSeasonalFindings, SEASONAL_WINDOW_DAYS } from "../strategy/intentSignals";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -169,6 +169,13 @@ export async function computeAnnexBFindings(now: Date = new Date()): Promise<Fin
       select: { slug: true, url: true, contentHash: true, finalScore: true, decision: true, reason: true, criteria: true },
     });
     findings.push(...extractEditorialFindings(latest as unknown as LatestScore[]));
+    const prepublish = await prisma.editorialScore.findMany({
+      where: { kind: "prepublish" },
+      orderBy: { createdAt: "desc" },
+      distinct: ["slug"],
+      select: { slug: true, url: true, contentHash: true, finalScore: true, decision: true, reason: true, criteria: true, deterministic: true },
+    });
+    findings.push(...extractPrepublishFindings(prepublish as unknown as PrepublishScore[], now));
   }
 
   return findings;
