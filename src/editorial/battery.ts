@@ -191,6 +191,8 @@ export async function stepBattery(runner: Runner, now: Date, siteBase: string, d
       return `batería de defectos: ${why}; IA editorial desactivada`;
     }
     await prisma.editorialBatteryRun.update({ where: { id: runId }, data: { status: "failed-quality", finishedAt: now, nextAttemptAt: new Date(now.getTime() + QUALITY_BACKOFF_HOURS[run!.attempt - 1] * HOUR) } });
+    // Un artículo base inválido no se arregla repitiendo: se avisa ya, no al quedar desactivada.
+    await alertOnce(key, "invalid-base", `La batería de defectos no es válida (intento ${run!.attempt}/${MAX_QUALITY_ATTEMPTS}): ${why}. Repetir no lo arregla; hay que revisar el artículo base antes de que se agoten los intentos.`, alert);
     return `batería de defectos: no vale (${why}; intento ${run!.attempt}/${MAX_QUALITY_ATTEMPTS})`;
   };
 

@@ -95,6 +95,7 @@ test("si el artículo base tiene algún criterio < 4, la batería no vale aunque
   const note = await stepBattery(floorLow, NOW, SITE, { unbudgeted: true, alert });
   assert.match(note, /no vale \(el artículo base tiene criterios por debajo de 4: enlazado/);
   assert.notEqual((await batteryState(NOW)).status, "ok");
+  assert.equal(alerts.length, 1, "avisa ya en el primer intento, no al quedar desactivada");
 });
 
 test("evaluador que premia lo largo: no pasa, corta pronto, reintenta con espera y a la 3.ª queda desactivada (terminal)", async () => {
