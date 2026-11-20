@@ -322,3 +322,9 @@ test("si el proceso ha vuelto a ir bien después del último fallo, se cierra si
   assert.equal(await repairOne("/tmp", deps()), "reparación: nada pendiente");
   assert.equal(agentCalls, 0);
 });
+
+test("vigilante externo: detecta los procesos del Mac sin latido (o que nunca latieron)", async () => {
+  const { staleOnes } = await import("../../scripts/check-mac-heartbeats");
+  const rows = [{ workflowName: "seo-repair", lastRunAt: new Date(NOW.getTime() - 5 * H) }, { workflowName: "seo-bridge", lastRunAt: new Date(NOW.getTime() - H) }];
+  assert.deepEqual(staleOnes(rows, NOW).map((s) => s.name), ["seo-repair", "seo-tick"]);
+});

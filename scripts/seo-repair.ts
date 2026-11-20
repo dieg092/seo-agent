@@ -125,6 +125,8 @@ async function main() {
     for (const l of await verifyMerged(deps)) console.log(`seo-repair: ${l}`);
     const line = process.argv.includes("--no-repair") ? "reparación: desactivada en esta pasada" : await repairOne(MAIN_DIR, deps);
     console.log(`${now.toISOString()} seo-repair: ${alerts.length} avisos nuevos, ${touched} de sistema; ${line}`);
+    // Latido propio: el vigilante de GitHub (self-health-watchdog) avisa si el Mac deja de pasar por aquí.
+    await prisma.workflowHeartbeat.upsert({ where: { workflowName: "seo-repair" }, create: { workflowName: "seo-repair", lastStatus: "ok", lastRunAt: new Date() }, update: { lastStatus: "ok", lastRunAt: new Date() } });
   } finally {
     try {
       unlinkSync(LOCK);

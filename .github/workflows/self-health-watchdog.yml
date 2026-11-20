@@ -62,6 +62,14 @@ jobs:
             gh api -X PUT repos/${{ github.repository }}/actions/workflows/$id/enable
           done
 
+      # Los procesos del Mac (autorreparación, puente, tick) no pueden avisar si el Mac está apagado:
+      # se comprueba su latido desde aquí. Avisa por su cuenta y no corta el ping de healthchecks.
+      - name: Latido de los procesos del Mac
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: pnpm exec prisma generate >/dev/null && pnpm exec tsx scripts/check-mac-heartbeats.ts
       - name: Check daily-collection.yml heartbeat (este mismo repo)
         run: pnpm exec tsx scripts/check-external-workflow-heartbeat.ts ${{ github.repository_owner }} ${{ github.event.repository.name }} daily-collection.yml
 
