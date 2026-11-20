@@ -5,12 +5,12 @@ import { factsFromWeddingRows, type Fact } from "../evidence";
 // completa (pairedDecision) no puede aprobar ninguna crítica y como mucho puede dejar pasar el 10 %
 // del resto. Casos críticos: cifras inventadas, contradicciones y cambio de intención.
 
-export const BATTERY_VERSION = "battery-v3";
+export const BATTERY_VERSION = "battery-v4";
 export const BATTERY_SLUG = "bateria/lista-de-invitados";
 
 export const BASE_ARTICLE = `# Cómo hacer la lista de invitados de la boda sin discutir
 
-Hacer la lista de invitados es lo primero que conviene cerrar, porque de ella dependen el sitio, el menú y el presupuesto. Aquí tenéis un método que funciona para parejas que no quieren pasarse semanas negociando. Sale de lo que vemos en las parejas que organizan su boda con nosotros: las que fijan el límite antes de apuntar nombres discuten menos y recortan menos al final.
+Hacer la lista de invitados es lo primero que conviene cerrar, porque de ella dependen el sitio, el menú y el presupuesto. Según el [Informe del Sector Nupcial 2026 de Bodas.net](https://www.bodas.net/articulos/sobrevivir-organizacion-boda-informe-sector-nupcial--c9224), las bodas de parejas millennials tienen de media 115 invitados y las de la generación Z, 118: cada nombre que entra mueve el resto de partidas. Aquí tenéis un método para cerrar la lista sin pasaros semanas negociando.
 
 ![Pareja repasando la lista de invitados en una mesa con una libreta](/images/blog/lista-invitados.webp)
 
