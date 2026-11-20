@@ -839,3 +839,32 @@ model EditorialFact {
   @@index([active, verifiedAt])
   @@schema("seo_agent")
 }
+
+/// Fallos del propio seo-agent que el supervisor de reparación (scripts/seo-repair.ts) agrupa,
+/// clasifica y, si son de código, intenta corregir con un agente aislado. Sin textos privados:
+/// la firma y la evidencia pasan por redactText.
+model RepairIncident {
+  id            String    @id @default(uuid())
+  key           String    @unique
+  alertType     String
+  component     String
+  signature     String
+  kind          String
+  status        String
+  occurrences   Int       @default(1)
+  firstSeenAt   DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime?
+  prUrl         String?
+  baseSha       String?
+  mergedSha     String?
+  verifyUntil   DateTime?
+  result        Json?
+  notifiedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@schema("seo_agent")
+}

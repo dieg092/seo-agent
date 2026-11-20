@@ -91,11 +91,15 @@ export function modelOrder(cases: BatteryCase[]): BatteryCase[] {
 }
 
 async function alertOnce(key: string, state: string, body: string, alert: typeof recordAlert) {
-  const subject = `IA editorial desactivada (${state}, configuración ${key.slice(0, 8)})`;
-  if (await prisma.alert.findFirst({ where: { type: "editorial-disabled", subject } })) return;
+  const invalid = state === "invalid-base";
+  const type = invalid ? "editorial-battery-invalid" : "editorial-disabled";
+  const subject = invalid
+    ? `Batería editorial no válida (configuración ${key.slice(0, 8)})`
+    : `IA editorial desactivada (${state}, configuración ${key.slice(0, 8)})`;
+  if (await prisma.alert.findFirst({ where: { type, subject } })) return;
   for (let i = 0; i < 3; i++) {
     try {
-      await alert({ type: "editorial-disabled", subject, body });
+      await alert({ type, subject, body });
       return;
     } catch {
       // se reintenta la entrega; si no, se sigue sin bloquear
