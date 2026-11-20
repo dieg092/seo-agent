@@ -13,7 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { prisma } from "../src/db";
 import { recordAlert } from "../src/alerts/recordAlert";
 import { execFileSync } from "node:child_process";
-import { computeEvents, mainCiEvent, nextState, type MainCiSnap, type TaskSnap, type TickState } from "../src/tick/events";
+import { computeEvents, isWebNonCodePath, mainCiEvent, nextState, type MainCiSnap, type TaskSnap, type TickState } from "../src/tick/events";
 
 const HOME = homedir();
 const STATE_DIR = join(HOME, ".seo-tick");
@@ -33,7 +33,12 @@ function mainCi(): MainCiSnap | null {
     const gh = (p: string, jq: string) => execFileSync("gh", ["api", p, "--jq", jq], { encoding: "utf8", timeout: 60_000 }).trim();
     const [sha, date] = gh(`repos/${WEB_REPO}/commits/main`, '[.sha, .commit.committer.date] | @tsv').split("\t");
     const conclusion = gh(`repos/${WEB_REPO}/commits/${sha}/check-runs?check_name=${encodeURIComponent(MAIN_CHECK)}`, "[.check_runs[0].conclusion // \"\"] | .[0]");
-    return { sha, conclusion: conclusion || null, ageMinutes: (Date.now() - Date.parse(date)) / 60_000 };
+    let onlyNonCode = false;
+    if (!conclusion) {
+      const files = gh(`repos/${WEB_REPO}/commits/${sha}`, ".files[].filename").split("\n").filter(Boolean);
+      onlyNonCode = files.length > 0 && files.every(isWebNonCodePath);
+    }
+    return { sha, conclusion: conclusion || null, ageMinutes: (Date.now() - Date.parse(date)) / 60_000, onlyNonCode };
   } catch {
     return null;
   }

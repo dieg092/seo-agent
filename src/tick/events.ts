@@ -66,6 +66,31 @@ export interface MainCiSnap {
   conclusion: string | null;
   /** Minutos desde el commit. */
   ageMinutes: number;
+  /** El commit solo toca rutas que la CI de la web ignora (paths-ignore): nunca tendrá check. */
+  onlyNonCode?: boolean;
+}
+
+// Copia de NON_CODE_PATHS de wedding-invite-2 (src/lib/ci/classify.ts), que es la
+// lista de paths-ignore de su ci.yml. Si cambia allí, cambia aquí.
+export const WEB_NON_CODE_PATHS: readonly string[] = [
+  "docs/**",
+  "audits/**",
+  "content-output/**",
+  ".orbita/**",
+  "**/*.md",
+  "src/lib/social/published-instagram-photo.json",
+  "src/lib/social/published-instagram-photo-fb.json",
+  "src/lib/social/published-pinterest-photo-pins.json",
+  "src/lib/blog/social-instagram.json",
+  "src/lib/blog/social-facebook.json",
+  "src/lib/blog/social-pinterest.json",
+  "src/lib/blog/social-copy-pending.json",
+];
+
+export function isWebNonCodePath(path: string): boolean {
+  return WEB_NON_CODE_PATHS.some((g) =>
+    g === "**/*.md" ? path.endsWith(".md") : g.endsWith("/**") ? path.startsWith(g.slice(0, -2)) : path === g
+  );
 }
 
 /**
@@ -80,7 +105,7 @@ export function mainCiEvent(prevSha: string | null, ci: MainCiSnap): TickEvent |
     return { kind: "bloqueada", taskId: ci.sha, title: subject, detail: "La CI de main ha fallado: ese commit no se ha desplegado." };
   if (ci.conclusion === "cancelled")
     return { kind: "bloqueada", taskId: ci.sha, title: subject, detail: "La CI de main se canceló (cola de concurrencia): ese commit no se ha desplegado." };
-  if (ci.conclusion === null && ci.ageMinutes > 120)
+  if (ci.conclusion === null && ci.ageMinutes > 120 && !ci.onlyNonCode)
     return { kind: "bloqueada", taskId: ci.sha, title: subject, detail: "El último commit de main lleva más de 2 h sin CI terminada." };
   return null;
 }

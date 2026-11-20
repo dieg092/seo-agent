@@ -42,6 +42,13 @@ test("CI de main: avisa de fallo, cancelación o ausencia prolongada, una vez po
   assert.match(mainCiEvent(null, { sha: "a1", conclusion: "failure", ageMinutes: 50 })!.detail, /fallado/);
   assert.match(mainCiEvent(null, { sha: "a1", conclusion: "cancelled", ageMinutes: 50 })!.detail, /cancel/);
   assert.equal(mainCiEvent(null, { sha: "a1", conclusion: null, ageMinutes: 30 }), null);
+  assert.equal(mainCiEvent(null, { sha: "a1", conclusion: null, ageMinutes: 300, onlyNonCode: true }), null);
+  assert.match(mainCiEvent(null, { sha: "a1", conclusion: null, ageMinutes: 300 })!.detail, /2 h/);
+  const { isWebNonCodePath } = await import("./events");
+  assert.equal(isWebNonCodePath("src/lib/blog/social-pinterest.json"), true);
+  assert.equal(isWebNonCodePath("docs/geo/x.json"), true);
+  assert.equal(isWebNonCodePath("README.md"), true);
+  assert.equal(isWebNonCodePath("src/lib/blog/posts.ts"), false);
   assert.match(mainCiEvent(null, { sha: "a1", conclusion: null, ageMinutes: 130 })!.detail, /2 h/);
   assert.equal(mainCiEvent("a1", { sha: "a1", conclusion: "failure", ageMinutes: 50 }), null);
 });
