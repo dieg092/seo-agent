@@ -10,8 +10,8 @@ import { prisma } from "../src/db";
 import { recordAlert } from "../src/alerts/recordAlert";
 import { reserveCall } from "../src/editorial/budget";
 import { redactText } from "../src/privacy/outboundPolicy";
-import { checkHeartbeats, ingest, recoverStale, repairOne, verifyMerged, type SupervisorDeps } from "../src/repair/supervisor";
-import { createWorkspace, fileTail, ghFailedLog, localGate, publish, revertCommit, updateMainCheckout, workspaceDiff } from "../src/repair/git";
+import { checkHeartbeats, ingest, recoverStale, repairOne, resolveWithoutModel, verifyMerged, type SupervisorDeps } from "../src/repair/supervisor";
+import { childEnv, createWorkspace, fileTail, ghFailedLog, localGate, publish, revertCommit, updateMainCheckout, workspaceDiff } from "../src/repair/git";
 import { runSandboxedAgent } from "../src/repair/sandbox";
 
 const MAIN_DIR = join(__dirname, "..");
@@ -87,6 +87,22 @@ async function main() {
       revert: (sha, branch, msg) => revertCommit(MAIN_DIR, sha, branch, msg),
       updateMain: () => updateMainCheckout(MAIN_DIR),
       evidence: evidenceWith(runUrls),
+      pendingMigrations: () => {
+        try {
+          execFileSync("npx", ["prisma", "migrate", "status"], { cwd: MAIN_DIR, stdio: "ignore", timeout: 120_000, env: childEnv() });
+          return false;
+        } catch {
+          return true; // sale con 1 si hay migraciones pendientes (o si no puede comprobarlo: migrate deploy decide)
+        }
+      },
+      migrate: () => {
+        try {
+          execFileSync("pnpm", ["-s", "db:migrate"], { cwd: MAIN_DIR, stdio: "ignore", timeout: 300_000, env: childEnv() });
+          return { ok: true, detail: "migraciones aplicadas con pnpm db:migrate" };
+        } catch (e) {
+          return { ok: false, detail: redactText(String((e as Error).message)).slice(0, 300) };
+        }
+      },
       kickstart: (label) => {
         try {
           execFileSync("launchctl", ["kickstart", "-k", `gui/${process.getuid?.() ?? 501}/${label}`], { stdio: "ignore", timeout: 30_000 });
@@ -105,6 +121,7 @@ async function main() {
       renameSync(tmp, STATE);
     } else if (!state.cursor) writeFileSync(STATE, JSON.stringify({ cursor: now.toISOString() }));
     await checkHeartbeats(deps);
+    for (const l of await resolveWithoutModel(deps)) console.log(`seo-repair: ${l}`);
     for (const l of await verifyMerged(deps)) console.log(`seo-repair: ${l}`);
     const line = process.argv.includes("--no-repair") ? "reparación: desactivada en esta pasada" : await repairOne(MAIN_DIR, deps);
     console.log(`${now.toISOString()} seo-repair: ${alerts.length} avisos nuevos, ${touched} de sistema; ${line}`);

@@ -6,7 +6,7 @@ import { prisma } from "../db";
 import { classifyAlert, incidentKey, signatureOf } from "./classify";
 import { guardDiff, parseDiff, type DiffFile } from "./guard";
 import { parseReport, safeCommitMessage } from "./contract";
-import { checkHeartbeats, ingest, MAX_RUNS_PER_DAY, repairOne, verifyMerged, type SupervisorDeps } from "./supervisor";
+import { checkHeartbeats, ingest, MAX_RUNS_PER_DAY, repairOne, resolveWithoutModel, verifyMerged, type SupervisorDeps } from "./supervisor";
 import { sanitizeEvidence } from "../../scripts/seo-repair";
 
 const NOW = new Date("2026-11-20T12:00:00Z");
@@ -137,6 +137,8 @@ function deps(over: Partial<SupervisorDeps> = {}): SupervisorDeps {
     updateMain: () => ({ ok: true }),
     evidence: () => "Aviso: TypeError",
     kickstart: () => true,
+    pendingMigrations: () => false,
+    migrate: () => ({ ok: true, detail: "aplicadas" }),
     ...over,
   };
 }
@@ -288,7 +290,7 @@ test("heartbeat atrasado del Mac: se relanza; si sigue sin latir, aviso único",
   await checkHeartbeats(d);
   assert.equal(kicks, 1);
   assert.equal(notes.length, 0);
-  clock = new Date(NOW.getTime() + H);
+  clock = new Date(NOW.getTime() + 2 * H);
   await checkHeartbeats(d);
   await checkHeartbeats(d);
   assert.equal(kicks, 1);
@@ -297,4 +299,26 @@ test("heartbeat atrasado del Mac: se relanza; si sigue sin latir, aviso único",
   await prisma.workflowHeartbeat.update({ where: { workflowName: "seo-bridge" }, data: { lastRunAt: clock } });
   await checkHeartbeats(d);
   assert.equal((await prisma.repairIncident.findFirstOrThrow()).status, "resolved");
+});
+
+test("columna que no existe en la BD: es una migración pendiente; se aplica sin modelo y se cierra", async () => {
+  const a = { type: "seo-bridge-failed", subject: "El puente SEO con Órbita ha fallado", body: "PrismaClientKnownRequestError: The column `SeoTaskLink.guardErrors` does not exist in the current database.", createdAt: NOW };
+  assert.equal(classifyAlert(a).kind, "migration");
+  let migrated = 0;
+  const d = deps({ pendingMigrations: () => true, migrate: () => (migrated += 1, { ok: true, detail: "aplicadas" }) });
+  await ingest([a], d);
+  await resolveWithoutModel(d);
+  assert.equal(migrated, 1);
+  assert.equal((await prisma.repairIncident.findFirstOrThrow()).status, "resolved");
+  assert.ok(notes.some((n) => n.type === "seo-repair-fixed"));
+  assert.equal(agentCalls, 0);
+});
+
+test("si el proceso ha vuelto a ir bien después del último fallo, se cierra sin gastar modelo", async () => {
+  await ingest([{ type: "seo-bridge-failed", subject: "El puente ha fallado", body: "TypeError: x", createdAt: NOW }], deps());
+  await prisma.workflowHeartbeat.create({ data: { workflowName: "seo-bridge", lastStatus: "ok", lastRunAt: new Date(NOW.getTime() + H) } });
+  await resolveWithoutModel(deps());
+  assert.equal((await prisma.repairIncident.findFirstOrThrow()).status, "resolved");
+  assert.equal(await repairOne("/tmp", deps()), "reparación: nada pendiente");
+  assert.equal(agentCalls, 0);
 });

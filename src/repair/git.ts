@@ -55,7 +55,7 @@ export function createWorkspace(mainDir: string): Workspace {
 
 /** Cambios de la copia respecto a su base, incluidos ficheros nuevos sin seguimiento. */
 export function workspaceDiff(dir: string): DiffFile[] {
-  run("git", ["add", "--intent-to-add", "--all", "--", ".", ":(exclude)node_modules"], dir);
+  run("git", ["add", "--intent-to-add", "--all"], dir);
   const numstat = run("git", ["diff", "--numstat", "HEAD"], dir);
   const nameStatus = run("git", ["diff", "--name-status", "HEAD"], dir);
   const patch = run("git", ["diff", "-U0", "HEAD"], dir);
@@ -91,7 +91,7 @@ function tail(e: unknown): string {
 /** Commit, push, PR y fusión squash. Devuelve la URL del PR y el SHA fusionado en main. */
 export function publish(dir: string, branch: string, message: string, body: string): { prUrl: string; mergedSha: string } {
   run("git", ["checkout", "--quiet", "-b", branch], dir);
-  run("git", ["add", "--all", "--", ".", ":(exclude)node_modules"], dir);
+  run("git", ["add", "--all"], dir);
   run("git", ["commit", "--quiet", "-m", message], dir);
   run("git", ["push", "--quiet", "-u", "origin", branch], dir, { timeoutMs: 180_000 });
   const prUrl = run("gh", ["pr", "create", "-R", REPO_SLUG, "--head", branch, "--base", "main", "--title", message, "--body", body], dir).trim().split("\n").pop()!;

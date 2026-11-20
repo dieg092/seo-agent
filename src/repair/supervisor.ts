@@ -24,7 +24,7 @@ const HOUR = 3_600_000;
 
 /** Cadencia esperada de cada proceso con heartbeat; label = LaunchAgent del Mac (se relanza solo). */
 export const CADENCE: Record<string, { everyMs: number; label?: string }> = {
-  "seo-bridge": { everyMs: 15 * 60_000, label: "com.miwebdeboda.seo-bridge" },
+  "seo-bridge": { everyMs: 30 * 60_000, label: "com.miwebdeboda.seo-bridge" },
   "seo-tick": { everyMs: 30 * 60_000, label: "com.miwebdeboda.seo-tick" },
   "daily-collection": { everyMs: 24 * HOUR },
   "weekly-embeddings-and-briefing": { everyMs: 7 * 24 * HOUR },
@@ -57,6 +57,10 @@ export interface SupervisorDeps {
   updateMain: () => { ok: boolean; reason?: string };
   evidence: (component: string, alertType: string, alertText: string) => string;
   kickstart: (label: string) => boolean;
+  /** Migraciones pendientes en la BD de producción (prisma migrate status). */
+  pendingMigrations: () => boolean;
+  /** Aplica las migraciones pendientes (pnpm db:migrate). */
+  migrate: () => { ok: boolean; detail: string };
 }
 
 type Incident = Awaited<ReturnType<typeof prisma.repairIncident.findFirstOrThrow>>;
@@ -89,7 +93,7 @@ export async function ingest(alerts: (AlertInput & { createdAt: Date })[], deps:
           component: c.component,
           signature: c.signature,
           kind: c.kind,
-          status: c.kind === "code" ? "open" : c.kind === "transient" ? "waiting" : "escalated",
+          status: c.kind === "code" || c.kind === "migration" ? "open" : c.kind === "transient" ? "waiting" : "escalated",
           firstSeenAt: a.createdAt,
           lastSeenAt: a.createdAt,
           nextAttemptAt: a.createdAt,
@@ -107,7 +111,7 @@ export async function ingest(alerts: (AlertInput & { createdAt: Date })[], deps:
     };
     // Reaparece algo que se dio por resuelto: nueva generación con los mismos límites.
     if (existing.status === "resolved" && a.createdAt > existing.updatedAt) {
-      data.status = existing.kind === "code" ? "open" : existing.kind === "transient" ? "waiting" : "escalated";
+      data.status = existing.kind === "code" || existing.kind === "migration" ? "open" : existing.kind === "transient" ? "waiting" : "escalated";
       data.nextAttemptAt = deps.now();
     }
     const updated = await prisma.repairIncident.update({ where: { id: existing.id }, data });
@@ -180,6 +184,42 @@ async function runsToday(now: Date): Promise<number> {
   const since = now.getTime() - 24 * HOUR;
   const rows = await prisma.repairIncident.findMany({ where: { updatedAt: { gte: new Date(since) } } });
   return rows.reduce((n, i) => n + runsOf(i).filter((r) => Date.parse(r.at) >= since && r.verdict !== "aplazado").length, 0);
+}
+
+/**
+ * Sin modelo: migraciones pendientes se aplican (la «trampa del despliegue»: código nuevo que usa
+ * columnas antes de migrar) y lo que ya se ha recuperado solo (su proceso ha vuelto a ir bien
+ * después del último fallo) se cierra sin gastar cupo.
+ */
+export async function resolveWithoutModel(deps: Pick<SupervisorDeps, "now" | "notify" | "pendingMigrations" | "migrate">): Promise<string[]> {
+  const log: string[] = [];
+  const migr = await prisma.repairIncident.findMany({ where: { kind: "migration", status: "open" } });
+  if (migr.length) {
+    let pending = false;
+    try {
+      pending = deps.pendingMigrations();
+    } catch {
+      pending = false;
+    }
+    const r = pending ? deps.migrate() : { ok: true, detail: "no había migraciones pendientes: ya estaban aplicadas" };
+    for (const m of migr) {
+      await prisma.repairIncident.update({
+        where: { id: m.id },
+        data: r.ok ? { status: "resolved", result: { ...((m.result as object) ?? {}), resolvedBy: r.detail } } : { kind: "founder", status: "open" },
+      });
+      if (!r.ok) await escalate(m, `Falta aplicar una migración de seo-agent y no he podido hacerlo (${r.detail.slice(0, 300)}). Ejecuta: cd ~/Projects/production/miwebdeboda/seo-agent && pnpm -s db:migrate`, deps, "necesita una migración");
+    }
+    if (pending && r.ok) await deps.notify({ type: "seo-repair-fixed", subject: "Autorreparado: migración pendiente de seo-agent aplicada", body: `${migr.map((m) => m.component).join(", ")} fallaba porque el código usaba columnas que la BD aún no tenía. Migración aplicada.` });
+    log.push(`migraciones: ${pending ? (r.ok ? "aplicadas" : "fallo al aplicar") : "ya al día"} (${migr.length} incidencia/s)`);
+  }
+  for (const i of await prisma.repairIncident.findMany({ where: { kind: "code", status: "open" } })) {
+    const hb = await prisma.workflowHeartbeat.findUnique({ where: { workflowName: i.component } });
+    if (hb && /^(ok|success)$/.test(hb.lastStatus) && hb.lastRunAt > i.lastSeenAt) {
+      await prisma.repairIncident.update({ where: { id: i.id }, data: { status: "resolved", result: { ...((i.result as object) ?? {}), resolvedBy: `se recuperó solo: ${i.component} fue bien el ${hb.lastRunAt.toISOString().slice(0, 16)} UTC` } } });
+      log.push(`${i.id.slice(0, 8)} (${i.component}): recuperado solo`);
+    }
+  }
+  return log;
 }
 
 /** 4. Repara como mucho una incidencia. Devuelve una línea para el log. */

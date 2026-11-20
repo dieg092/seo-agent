@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { redactText } from "../privacy/outboundPolicy";
 
-export type FaultKind = "ignore" | "transient" | "founder" | "code";
+export type FaultKind = "ignore" | "transient" | "founder" | "code" | "migration";
 
 export interface AlertInput {
   type: string;
@@ -44,6 +44,9 @@ const TRANSIENT_RE =
 
 const CREDENTIAL_RE =
   /\b(401|403)\b|invalid_grant|unauthori[sz]ed|bad credentials|token (has )?expired|PERMISSION_DENIED|authentication failed|password authentication failed|P1000|requires? (a )?(huella|fingerprint)/i;
+
+/** Columna o tabla que el código ya usa y la BD aún no tiene: falta aplicar una migración. */
+const MISSING_SCHEMA_RE = /\b(column|table) `?[\w."]+`? does not exist in the current database|\bP202[12]\b/i;
 
 export function isRepairOwnAlert(type: string): boolean {
   return type.startsWith("seo-repair-");
@@ -92,6 +95,7 @@ export function classifyAlert(a: AlertInput): Classification {
       founderStep: `Una credencial de ${component} ha sido rechazada. Renueva ese secreto como siempre (con read -rs, sin pegarlo en ningún chat) y relanza el proceso; el supervisor comprobará solo que vuelve a funcionar.`,
     };
   }
+  if (MISSING_SCHEMA_RE.test(text)) return { kind: "migration", component, signature };
   if (TRANSIENT_RE.test(text)) return { kind: "transient", component, signature };
   if (NOT_CODE_TYPES.has(a.type)) return ignore;
   return { kind: "code", component, signature };
