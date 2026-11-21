@@ -12,13 +12,66 @@ import { reserveCall } from "../src/editorial/budget";
 import { redactText } from "../src/privacy/outboundPolicy";
 import { checkHeartbeats, ingest, recoverStale, repairOne, resolveWithoutModel, verifyMerged, type SupervisorDeps } from "../src/repair/supervisor";
 import { childEnv, createWorkspace, fileTail, ghFailedLog, localGate, publish, revertCommit, updateMainCheckout, workspaceDiff } from "../src/repair/git";
-import { runSandboxedAgent } from "../src/repair/sandbox";
+import { runSandboxedAgent, WEB_REPAIR_ALLOWED } from "../src/repair/sandbox";
+import { advanceWebPrs, observeWeb, repairWeb, verifyWeb, type WebCursor, type WebDeps } from "../src/repair/web/supervisor";
+import { branchCiRun, closePr, dispatchCi, listRuns, mergePr, prState, pushPr, retryRun, revertInto, runFailure, updateBranch, webGate } from "../src/repair/web/github";
+import { protectedMatcher } from "../src/repair/web/guard";
 
 const MAIN_DIR = join(__dirname, "..");
 const STATE_DIR = join(homedir(), ".seo-repair");
 const LOCK = join(STATE_DIR, "lock");
 const STATE = join(STATE_DIR, "state.json");
 const OFF = join(STATE_DIR, "OFF");
+/** Web: WEB_OFF apaga la parte web; WEB_OBSERVE la deja solo observando (sin modelo ni publicación). */
+const WEB_OFF = join(STATE_DIR, "WEB_OFF");
+const WEB_OBSERVE = join(STATE_DIR, "WEB_OBSERVE");
+const WEB_CURSOR = join(STATE_DIR, "web-cursor.json");
+const WI2_DIR = join(MAIN_DIR, "..", "wedding-invite-2");
+const PROTECTED_LIST = join(homedir(), "Projects/infra/miwebdeboda-deploy/protegido.txt");
+
+function webDeps(base: SupervisorDeps): WebDeps {
+  // Sin la lista de protegidos de la puerta de despliegue, todo cuenta como protegido (falla cerrado).
+  const isProtected = existsSync(PROTECTED_LIST) ? protectedMatcher(readFileSync(PROTECTED_LIST, "utf8")) : () => true;
+  return {
+    now: base.now,
+    notify: base.notify,
+    reserve: base.reserve,
+    runs: (s) => listRuns(s),
+    failure: runFailure,
+    retry: retryRun,
+    createWorkspace: () => createWorkspace(WI2_DIR),
+    runAgent: (dir, prompt) => runSandboxedAgent(dir, prompt, 20 * 60_000, WEB_REPAIR_ALLOWED),
+    diff: workspaceDiff,
+    gate: webGate,
+    isProtected,
+    pushPr,
+    pr: prState,
+    updateBranch,
+    dispatchCi,
+    branchCi: branchCiRun,
+    merge: mergePr,
+    close: closePr,
+    revertInto,
+  };
+}
+
+async function webPass(base: SupervisorDeps, seoLine: string): Promise<string> {
+  if (existsSync(WEB_OFF)) return "web: apagada (~/.seo-repair/WEB_OFF)";
+  const observeOnly = existsSync(WEB_OBSERVE);
+  const deps = webDeps(base);
+  const cursor: WebCursor = existsSync(WEB_CURSOR) ? JSON.parse(readFileSync(WEB_CURSOR, "utf8")) : {};
+  const obs = await observeWeb(cursor, observeOnly ? { ...deps, retry: () => false } : deps);
+  const tmp = `${WEB_CURSOR}.tmp`;
+  writeFileSync(tmp, JSON.stringify(obs.cursor));
+  renameSync(tmp, WEB_CURSOR);
+  for (const l of obs.log) console.log(`seo-repair web: ${l}`);
+  if (observeOnly) return "web: solo observación (~/.seo-repair/WEB_OBSERVE)";
+  for (const l of await advanceWebPrs(deps)) console.log(`seo-repair web: ${l}`);
+  for (const l of await verifyWeb(deps)) console.log(`seo-repair web: ${l}`);
+  // Una sola ejecución del modelo por pasada: la web solo si seo-agent no tenía nada que reparar.
+  if (process.argv.includes("--no-repair") || !/nada pendiente/.test(seoLine)) return "web: sin reparar en esta pasada";
+  return repairWeb(deps);
+}
 
 /** Evidencia saneada para el agente: sin URLs de BD, tokens largos ni rutas personales. */
 export function sanitizeEvidence(text: string): string {
@@ -124,7 +177,13 @@ async function main() {
     for (const l of await resolveWithoutModel(deps)) console.log(`seo-repair: ${l}`);
     for (const l of await verifyMerged(deps)) console.log(`seo-repair: ${l}`);
     const line = process.argv.includes("--no-repair") ? "reparación: desactivada en esta pasada" : await repairOne(MAIN_DIR, deps);
-    console.log(`${now.toISOString()} seo-repair: ${alerts.length} avisos nuevos, ${touched} de sistema; ${line}`);
+    let webLine: string;
+    try {
+      webLine = await webPass(deps, line);
+    } catch (e) {
+      webLine = `web: error (${redactText(String((e as Error).message)).slice(0, 200)})`;
+    }
+    console.log(`${now.toISOString()} seo-repair: ${alerts.length} avisos nuevos, ${touched} de sistema; ${line}; ${webLine}`);
     // Latido propio: el vigilante de GitHub (self-health-watchdog) avisa si el Mac deja de pasar por aquí.
     await prisma.workflowHeartbeat.upsert({ where: { workflowName: "seo-repair" }, create: { workflowName: "seo-repair", lastStatus: "ok", lastRunAt: new Date() }, update: { lastStatus: "ok", lastRunAt: new Date() } });
   } finally {

@@ -94,7 +94,9 @@ export function validate(obj: unknown): RepairReport | null {
 export function safeCommitMessage(msg: string | null, component: string): string {
   const fallback = `repara ${component}`.slice(0, 60);
   if (!msg) return fallback;
-  const m = msg.trim().split("\n")[0];
+  // sin prefijos de convención (fix:, feat(x):…) y nunca «seo(…)», que la puerta de despliegue trata como cambio SEO
+  const m = msg.trim().split("\n")[0].replace(/^(fix|feat|chore|refactor|test|docs|perf|style|build|ci)(\([^)]*\))?!?:\s*/i, "");
+  if (/^seo\(/i.test(m)) return fallback;
   if (m.length < 8 || m.length > 60 || /claude|codex|openai|\bia\b|\bai\b|co-authored|—|gpt/i.test(m) || /^[A-ZÁÉÍÓÚ]/.test(m)) return fallback;
   return m;
 }

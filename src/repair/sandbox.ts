@@ -18,10 +18,18 @@ export const REPAIR_ALLOWED = [
   "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)", "Bash(git show*)",
   "Bash(ls*)", "Bash(cat *)", "Bash(grep *)", "Bash(find *)", "Bash(head *)", "Bash(tail *)", "Bash(wc *)",
 ];
+/** Reparador de la web (wi2): tipos, lint y tests unitarios sin BD; nada más. */
+export const WEB_REPAIR_ALLOWED = [
+  "Read", "Edit", "Write", "Glob", "Grep", "TodoWrite",
+  "Bash(npx tsc *)", "Bash(npx eslint *)", "Bash(npx tsx --test *)",
+  "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)", "Bash(git show*)",
+  "Bash(ls*)", "Bash(cat *)", "Bash(grep *)", "Bash(find *)", "Bash(head *)", "Bash(tail *)", "Bash(wc *)",
+];
 export const REPAIR_DISALLOWED = [
   "Bash(git push*)", "Bash(git commit*)", "Bash(git add*)", "Bash(git reset*)", "Bash(git checkout*)", "Bash(git clean*)",
   "Bash(git remote*)", "Bash(git worktree*)", "Bash(git fetch*)", "Bash(git config*)", "Bash(gh *)", "Bash(curl *)", "Bash(wget *)",
   "Bash(rm -rf*)", "Bash(npx prisma*)", "Bash(pnpm *)", "Bash(npm *)", "Bash(node *)", "Bash(npx tsx scripts*)",
+  "Bash(npx playwright*)", "Bash(npx next*)", "Bash(vercel*)", "Bash(npx vercel*)",
   "mcp__*", "WebFetch", "WebSearch", "NotebookEdit",
 ];
 
@@ -37,7 +45,7 @@ export function findEnvFiles(root: string, depth = 6, out: string[] = []): strin
   for (const e of entries) {
     if (e === "node_modules" || e === ".git" || e === ".next" || e === "dist") continue;
     const p = join(root, e);
-    if (e.startsWith(".env") && e !== ".env.example") out.push(p);
+    if (e.startsWith(".env")) out.push(p);
     else {
       try {
         if (statSync(p).isDirectory()) findEnvFiles(p, depth - 1, out);
@@ -61,7 +69,7 @@ export interface AgentRun {
   error?: string;
 }
 
-export async function runSandboxedAgent(cwd: string, prompt: string, timeoutMs = 20 * 60_000): Promise<AgentRun> {
+export async function runSandboxedAgent(cwd: string, prompt: string, timeoutMs = 20 * 60_000, allowed: string[] = REPAIR_ALLOWED): Promise<AgentRun> {
   if (!existsSync(ORBITA_SANDBOX)) return { ok: false, text: "", denials: [], error: "no está el módulo de aislamiento de Órbita" };
   const sb = await import(ORBITA_SANDBOX as string);
   const tmpDir = mkdtempSync("/tmp/seo-repair-agent-"); // como Órbita: el TMPDIR del agente cuelga de aquí
@@ -73,7 +81,7 @@ export async function runSandboxedAgent(cwd: string, prompt: string, timeoutMs =
       "-p", "--restricted", "--tools", ...sb.AGENT_TOOLS, "--no-session-persistence", "--strict-mcp-config",
       "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
       "--settings", JSON.stringify(settings), "--max-turns", "60",
-      "--allowedTools", ...REPAIR_ALLOWED, "--disallowedTools", ...REPAIR_DISALLOWED, ...sb.denyReadRules(input),
+      "--allowedTools", ...allowed, "--disallowedTools", ...REPAIR_DISALLOWED, ...sb.denyReadRules(input),
     ];
     const env = sb.agentEnv(process.env, { GIT_TERMINAL_PROMPT: "0", CLAUDE_CODE_TMPDIR: tmpDir, TMPDIR: tmpDir, SEO_ENV: "test" });
     const r = spawnSync(claudeBin(), args, { cwd, input: prompt, encoding: "utf8", timeout: timeoutMs, env, maxBuffer: 64 * 1024 * 1024 });

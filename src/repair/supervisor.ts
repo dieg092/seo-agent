@@ -180,10 +180,11 @@ export async function recoverStale(deps: Pick<SupervisorDeps, "now">): Promise<v
   await prisma.repairIncident.updateMany({ where: { status: "running", updatedAt: { lt: cutoff } }, data: { status: "open", nextAttemptAt: new Date(deps.now().getTime() + RETRY_GAP_MS) } });
 }
 
-async function runsToday(now: Date): Promise<number> {
+export async function runsToday(now: Date): Promise<number> {
   const since = now.getTime() - 24 * HOUR;
   const rows = await prisma.repairIncident.findMany({ where: { updatedAt: { gte: new Date(since) } } });
-  return rows.reduce((n, i) => n + runsOf(i).filter((r) => Date.parse(r.at) >= since && r.verdict !== "aplazado").length, 0);
+  // «ci-*»: resultado posterior de la CI de un PR ya contado (no es otra ejecución del modelo).
+  return rows.reduce((n, i) => n + runsOf(i).filter((r) => Date.parse(r.at) >= since && r.verdict !== "aplazado" && !r.verdict.startsWith("ci-")).length, 0);
 }
 
 /**
@@ -212,7 +213,7 @@ export async function resolveWithoutModel(deps: Pick<SupervisorDeps, "now" | "no
     if (pending && r.ok) await deps.notify({ type: "seo-repair-fixed", subject: "Autorreparado: migración pendiente de seo-agent aplicada", body: `${migr.map((m) => m.component).join(", ")} fallaba porque el código usaba columnas que la BD aún no tenía. Migración aplicada.` });
     log.push(`migraciones: ${pending ? (r.ok ? "aplicadas" : "fallo al aplicar") : "ya al día"} (${migr.length} incidencia/s)`);
   }
-  for (const i of await prisma.repairIncident.findMany({ where: { kind: "code", status: "open" } })) {
+  for (const i of await prisma.repairIncident.findMany({ where: { kind: "code", status: "open", NOT: { component: { startsWith: "web-" } } } })) {
     const hb = await prisma.workflowHeartbeat.findUnique({ where: { workflowName: i.component } });
     if (hb && /^(ok|success)$/.test(hb.lastStatus) && hb.lastRunAt > i.lastSeenAt) {
       await prisma.repairIncident.update({ where: { id: i.id }, data: { status: "resolved", result: { ...((i.result as object) ?? {}), resolvedBy: `se recuperó solo: ${i.component} fue bien el ${hb.lastRunAt.toISOString().slice(0, 16)} UTC` } } });
@@ -225,9 +226,9 @@ export async function resolveWithoutModel(deps: Pick<SupervisorDeps, "now" | "no
 /** 4. Repara como mucho una incidencia. Devuelve una línea para el log. */
 export async function repairOne(mainDir: string, deps: SupervisorDeps): Promise<string> {
   const now = deps.now();
-  if (await prisma.repairIncident.findFirst({ where: { status: { in: ["running", "merged-pending-update"] } } })) return "reparación: hay otra en curso";
+  if (await prisma.repairIncident.findFirst({ where: { status: { in: ["running", "merged-pending-update", "pr-open"] } } })) return "reparación: hay otra en curso";
   const inc = await prisma.repairIncident.findFirst({
-    where: { kind: "code", status: "open", attempts: { lt: MAX_RUNS_PER_INCIDENT }, OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
+    where: { kind: "code", status: "open", NOT: { component: { startsWith: "web-" } }, attempts: { lt: MAX_RUNS_PER_INCIDENT }, OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
     orderBy: [{ occurrences: "desc" }, { firstSeenAt: "asc" }],
   });
   if (!inc) return "reparación: nada pendiente";
@@ -322,7 +323,7 @@ export async function verifyMerged(deps: Pick<SupervisorDeps, "now" | "notify" |
       await prisma.repairIncident.update({ where: { id: p.id }, data: { notifiedAt: now } });
     }
   }
-  for (const v of await prisma.repairIncident.findMany({ where: { status: "verifying" } })) {
+  for (const v of await prisma.repairIncident.findMany({ where: { status: "verifying", NOT: { component: { startsWith: "web-" } } } })) {
     const mergedAt = new Date((v.result as { mergedAt?: string } | null)?.mergedAt ?? v.updatedAt);
     // Fallo NUEVO en el mismo componente después de fusionar: la reparación lo ha empeorado.
     const fresh = await prisma.repairIncident.findFirst({ where: { component: v.component, id: { not: v.id }, kind: "code", firstSeenAt: { gt: mergedAt } } });
