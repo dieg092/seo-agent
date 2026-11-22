@@ -45,7 +45,7 @@ export function actorInput(query: string) {
     resultsPerPage: 6,
     videoSearchDateFilter: "PAST_WEEK",
     proxyCountryCode: "ES",
-    commentsPerPost: 10,
+    commentsPerPost: 20,
     maxRepliesPerComment: 0,
     shouldDownloadVideos: false,
     shouldDownloadCovers: false,
@@ -116,11 +116,13 @@ export function tiktokSource(deps: {
 
       const videos: any[] = await api(http, token, `/datasets/${run.defaultDatasetId}/items?clean=true`);
       const comments: TikTokComment[] = [];
+      // Todos los vídeos de una ejecución apuntan al MISMO conjunto de comentarios: se lee una vez.
+      const ids = new Set<string>();
       for (const v of videos) {
         const m = typeof v.commentsDatasetUrl === "string" ? v.commentsDatasetUrl.match(/\/datasets\/([^/]+)\/items/) : null;
-        if (!m) continue;
-        comments.push(...(await api(http, token, `/datasets/${m[1]}/items?clean=true`)));
+        if (m) ids.add(m[1]);
       }
+      for (const id of ids) comments.push(...(await api(http, token, `/datasets/${id}/items?clean=true`)));
       deps.log?.(`comunidades: tiktok «${query}»: ${videos.length} vídeos, ${comments.length} comentarios, ${cost.toFixed(3)} $ (mes: ${next.spentUsd.toFixed(2)} $)`);
       return postsFromComments(comments, videos);
     },
