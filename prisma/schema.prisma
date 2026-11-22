@@ -886,3 +886,90 @@ model AgentReadinessScan {
   @@index([profile, scannedAt])
   @@schema("seo_agent")
 }
+
+// Agente de comunidades: detecta preguntas de parejas en fuentes con API oficial y
+// prepara respuestas que el fundador revisa y publica a mano. Nunca publica.
+// Datos de terceros minimizados: sin autor ni grupo; se borran a los 7 días.
+model CommunitySource {
+  kind          String    @id // youtube | reddit | telegram | facebook_email | instagram
+  enabled       Boolean   @default(false)
+  status        String    @default("needs_auth") // ready | degraded | needs_auth | needs_review | disabled
+  note          String?
+  cursor        String?
+  lastAttemptAt DateTime?
+  lastSuccessAt DateTime?
+  lastErrorCode String?
+  updatedAt     DateTime  @updatedAt
+
+  @@schema("seo_agent")
+}
+
+model CommunityPost {
+  id          String         @id @default(uuid())
+  sourceKind  String
+  threadKey   String // HMAC del identificador canónico del hilo
+  openUrl     String
+  excerpt     String // ≤ 500 caracteres, sin datos de contacto
+  publishedAt DateTime?
+  detectedAt  DateTime       @default(now())
+  expiresAt   DateTime
+  score       Int
+  eligible    Boolean
+  reason      String
+  card        CommunityCard?
+
+  @@unique([sourceKind, threadKey])
+  @@index([eligible, detectedAt])
+  @@index([expiresAt])
+  @@schema("seo_agent")
+}
+
+model CommunityCard {
+  id           String        @id @default(uuid())
+  postId       String        @unique
+  post         CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  dayMadrid    String
+  draft        String
+  mentionsSite Boolean       @default(false)
+  status       String        @default("pending") // pending | sent | discarded
+  campaignCode String        @unique
+  createdAt    DateTime      @default(now())
+  sentAt       DateTime?
+  discardedAt  DateTime?
+  expiresAt    DateTime
+
+  @@index([dayMadrid, status])
+  @@index([expiresAt])
+  @@schema("seo_agent")
+}
+
+/// Huella de los hilos ya tratados para no repetirlos nunca. Sin URL ni texto.
+model CommunityDedup {
+  sourceKind  String
+  threadKey   String
+  firstSeenAt DateTime @default(now())
+  disposition String // seen | sent | discarded | expired
+
+  @@id([sourceKind, threadKey])
+  @@schema("seo_agent")
+}
+
+/// Totales por día y fuente (sin datos personales); se guardan 13 meses.
+model CommunityDailyResult {
+  dayMadrid  String
+  sourceKind String
+  selected   Int    @default(0)
+  sent       Int    @default(0)
+  discarded  Int    @default(0)
+
+  @@id([dayMadrid, sourceKind])
+  @@schema("seo_agent")
+}
+
+model CommunityControl {
+  id        String   @id @default("global")
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@schema("seo_agent")
+}

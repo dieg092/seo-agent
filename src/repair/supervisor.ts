@@ -26,6 +26,7 @@ const HOUR = 3_600_000;
 export const CADENCE: Record<string, { everyMs: number; label?: string }> = {
   "seo-bridge": { everyMs: 30 * 60_000, label: "com.miwebdeboda.seo-bridge" },
   "seo-tick": { everyMs: 30 * 60_000, label: "com.miwebdeboda.seo-tick" },
+  comunidades: { everyMs: 30 * 60_000, label: "com.miwebdeboda.comunidades" },
   "daily-collection": { everyMs: 24 * HOUR },
   "weekly-embeddings-and-briefing": { everyMs: 7 * 24 * HOUR },
   "monthly-site-architecture": { everyMs: 32 * 24 * HOUR },
