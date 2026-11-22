@@ -7,7 +7,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { Runner } from "../editorial/evaluator";
 import { EditorialDeferred } from "../editorial/modelErrors";
 import { DAILY_CARDS, RETENTION_DAYS, campaignUrl, madrid, minimize, scorePost, selectCards, threadKey } from "./core";
-import { DRAFT_SYSTEM, buildDraftPrompt, draftSchema, validateDrafts, type DraftInput } from "./draft";
+import { DRAFT_SYSTEM, REVIEW_SYSTEM, applyReview, buildDraftPrompt, buildReviewPrompt, draftSchema, reviewSchema, validateDrafts, type DraftInput } from "./draft";
 import { SourceError, type Source } from "./sources";
 
 export interface TickDeps {
@@ -89,15 +89,19 @@ export async function tick(d: TickDeps): Promise<TickResult> {
 
   const codes = new Map(chosen.map((p) => [p.id, randomUUID()]));
   const inputs: DraftInput[] = chosen.map((p) => ({ id: p.id, source: p.sourceKind, excerpt: p.excerpt, campaignUrl: campaignUrl("/invitacion-digital-boda", p.sourceKind, codes.get(p.id)!) }));
-  let raw: unknown;
+  let drafts;
   try {
-    raw = await d.runner({ system: DRAFT_SYSTEM, user: buildDraftPrompt(inputs), schema: draftSchema });
+    const raw = await d.runner({ system: DRAFT_SYSTEM, user: buildDraftPrompt(inputs), schema: draftSchema });
+    const first = validateDrafts(raw, inputs);
+    // Segunda pasada obligatoria: nada llega al panel sin nota de «suena humano» ≥ 8.
+    const reviewed = first.length ? await d.runner({ system: REVIEW_SYSTEM, user: buildReviewPrompt(first, inputs), schema: reviewSchema }) : { results: [] };
+    drafts = applyReview(reviewed, first, inputs).slice(0, slots);
+    d.log?.(`comunidades: ${first.length} borradores, ${drafts.length} aprobados en revisión (notas ${drafts.map((x) => x.score).join(", ") || "-"})`);
   } catch (e) {
     if (e instanceof EditorialDeferred) return { ...res, deferred: e.message };
     throw e;
   }
   d.setLastDraftDay(day);
-  const drafts = validateDrafts(raw, inputs).slice(0, slots);
   const ok = new Set(drafts.map((x) => x.id));
   for (const x of drafts) {
     const p = chosen.find((c) => c.id === x.id)!;

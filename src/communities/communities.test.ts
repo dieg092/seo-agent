@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { prisma } from "../db";
 import { EditorialDeferred } from "../editorial/modelErrors";
 import { campaignUrl, hmacKey, madrid, minimize, scorePost, selectCards, threadKey, type RawPost } from "./core";
-import { validateDrafts, type DraftInput } from "./draft";
+import { applyReview, checkText, validateDrafts, type DraftInput } from "./draft";
 import { tick, type TickDeps } from "./runner";
 import type { Source } from "./sources";
 import { facebookGroupPost, facebookPostsFromMail } from "./accounts";
@@ -45,8 +45,8 @@ test("hmac estable por clave y madrid() en hora local", () => {
 });
 
 test("validación de borradores: sin precios, enlaces solo de campaña y divulgación obligatoria", () => {
-  const url = campaignUrl("/invitacion-digital-boda", "youtube", "k1");
-  const cands: DraftInput[] = [{ id: "p1", source: "youtube", excerpt: Q, campaignUrl: url }];
+  const url = campaignUrl("/invitacion-digital-boda", "facebook_email", "k1");
+  const cands: DraftInput[] = [{ id: "p1", source: "facebook_email", excerpt: Q, campaignUrl: url }];
   const long = "Lo más cómodo es mandar un único enlace por WhatsApp con la fecha, el horario y cómo llegar, y pedir que cada invitado confirme ahí con su menú y alergias. Así no persigues a nadie por mensajes sueltos.";
   const ok = (text: string) => validateDrafts({ results: [{ id: "p1", decision: "draft", text }] }, cands);
   assert.equal(ok(long).length, 1);
@@ -55,6 +55,29 @@ test("validación de borradores: sin precios, enlaces solo de campaña y divulga
   assert.equal(ok(`${long} Soy el creador de miwebdeboda: https://otra.web`).length, 0, "enlace no autorizado");
   assert.equal(ok(`${long} Cuesta 49 €.`).length, 0, "precio");
   assert.equal(validateDrafts({ results: [{ id: "otro", decision: "draft", text: long }] }, cands).length, 0);
+  assert.equal(ok(`¡Hola! ${long}`).length, 0, "saludo de plantilla");
+  assert.equal(ok(`${long} Espero que te sirva.`).length, 0, "muletilla de IA");
+  assert.equal(ok(long.replace(", y pedir", " — y pedir")).length, 0, "guion largo");
+});
+
+test("formato por red: tiktok ≤ 150 caracteres y sin enlaces; youtube sin enlaces", () => {
+  const tk: DraftInput = { id: "t", source: "tiktok", excerpt: Q, campaignUrl: campaignUrl("/x", "tiktok", "k") };
+  const yt: DraftInput = { id: "y", source: "youtube", excerpt: Q, campaignUrl: campaignUrl("/x", "youtube", "k") };
+  const short = "Yo las mandé por WhatsApp con un enlace y confirmaban ahí mismo, cero líos. Soy el creador de miwebdeboda.com";
+  assert.ok(short.length <= 150);
+  assert.equal(checkText(short, tk)?.mentionsSite, true);
+  assert.equal(checkText(`${short} y la verdad es que a la gente le resultó facilísimo confirmar desde el móvil`, tk), null, "más de 150 caracteres");
+  assert.equal(checkText(`${short} ${tk.campaignUrl}`, tk), null, "tiktok sin enlaces");
+  assert.equal(checkText(`Nosotros lo hicimos con un enlace por WhatsApp y cada invitado confirmaba ahí. Soy el creador de miwebdeboda: ${yt.campaignUrl}`, yt), null, "youtube sin enlaces");
+});
+
+test("revisión: solo pasan las de nota ≥ 8 y la versión reescrita se vuelve a validar", () => {
+  const c: DraftInput = { id: "p1", source: "facebook_email", excerpt: Q, campaignUrl: campaignUrl("/x", "facebook_email", "k") };
+  const d = { id: "p1", text: "x", mentionsSite: false };
+  const good = "Lo más cómodo es mandar un único enlace por WhatsApp con la fecha, el horario y cómo llegar, y pedir que cada invitado confirme ahí con su menú y alergias. Así no persigues a nadie.";
+  assert.equal(applyReview({ results: [{ id: "p1", decision: "keep", score: 9, text: good }] }, [d], [c])[0].score, 9);
+  assert.equal(applyReview({ results: [{ id: "p1", decision: "keep", score: 7, text: good }] }, [d], [c]).length, 0, "nota baja");
+  assert.equal(applyReview({ results: [{ id: "p1", decision: "keep", score: 9, text: `¡Hola! ${good}` }] }, [d], [c]).length, 0, "reescrita con muletilla");
 });
 
 // --- tick contra la BD de tests ---
@@ -62,7 +85,11 @@ const key = hmacKey(join(mkdtempSync(join(tmpdir(), "com-")), "k"));
 const fakeSource = (posts: RawPost[]): Source => ({ kind: "youtube", everyMs: 0, configured: () => true, fetch: async () => posts });
 const DRAFT = "Lo más cómodo es mandar un único enlace por WhatsApp con la fecha, el horario y cómo llegar, y pedir que cada invitado confirme ahí con su menú y alergias. Así no persigues a nadie por mensajes sueltos.";
 let lastDay: string | null = null;
-function deps(posts: RawPost[], runner: TickDeps["runner"] = async (r) => ({ results: JSON.parse(r.user.split("<CANDIDATES>\n")[1].split("\n</CANDIDATES>")[0]).map((c: { id: string }) => ({ id: c.id, decision: "draft", text: DRAFT })) }), now = NOW): TickDeps {
+const fakeRunner: TickDeps["runner"] = async (r) =>
+  r.user.includes("<RESPUESTAS>")
+    ? { results: JSON.parse(r.user.split("<RESPUESTAS>\n")[1].split("\n</RESPUESTAS>")[0]).map((c: { id: string; respuesta: string }) => ({ id: c.id, decision: "keep", score: 9, text: c.respuesta })) }
+    : { results: JSON.parse(r.user.split("<CANDIDATES>\n")[1].split("\n</CANDIDATES>")[0]).map((c: { id: string }) => ({ id: c.id, decision: "draft", text: DRAFT })) };
+function deps(posts: RawPost[], runner: TickDeps["runner"] = fakeRunner, now = NOW): TickDeps {
   return { db: prisma, now: () => now, env: {}, sources: [fakeSource(posts)], key, runner, lastDraftDay: () => lastDay, setLastDraftDay: (d) => (lastDay = d) };
 }
 
