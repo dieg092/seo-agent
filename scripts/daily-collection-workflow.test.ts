@@ -47,6 +47,7 @@ const NEW_STEPS: Record<string, string> = {
   "collect-gsc-full": "collect:search-console-full",
   "collect-url-inspection": "collect:url-inspection",
   "audit-production": "audit:production",
+  "collect-agent-readiness": "collect:agent-readiness",
 };
 
 // Pasos de recogida/auditoría que no deben tumbar el resto del workflow.
@@ -60,6 +61,7 @@ const NON_BLOCKING_STEPS = [
   "audit-structured-data",
   "audit-performance",
   "audit-production",
+  "collect-agent-readiness",
 ];
 
 function step(id: string): Step {
