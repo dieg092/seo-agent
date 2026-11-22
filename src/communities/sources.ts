@@ -32,10 +32,10 @@ async function getJson(http: typeof fetch, url: string, token: string): Promise<
 export const youtube: Source = {
   kind: "youtube",
   everyMs: 24 * 3_600_000,
-  // Usa la cuenta de servicio de Search Console (scope youtube.readonly): no hace falta clave.
+  // Usa la cuenta de servicio de Search Console (scope youtube.force-ssl, el único con el que deja leer comentarios; solo se usan lecturas): no hace falta clave.
   configured: (env) => Boolean(env.GOOGLE_SERVICE_ACCOUNT_EMAIL && env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY),
   async fetch(now, env, http = fetch) {
-    const jwt = new google.auth.JWT(env.GOOGLE_SERVICE_ACCOUNT_EMAIL, undefined, env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY!.replace(/\\n/g, "\n"), ["https://www.googleapis.com/auth/youtube.readonly"]);
+    const jwt = new google.auth.JWT(env.GOOGLE_SERVICE_ACCOUNT_EMAIL, undefined, env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY!.replace(/\\n/g, "\n"), ["https://www.googleapis.com/auth/youtube.force-ssl"]);
     const token = (await jwt.getAccessToken()).token;
     if (!token) throw new SourceError("auth", "sin token de Google");
     const after = new Date(now.getTime() - 30 * 86_400_000).toISOString();
