@@ -54,7 +54,8 @@ export function facebookPostsFromMail(mail: { text: string; html: string; date: 
     const p = facebookGroupPost(h);
     if (!p || seen.has(p.canonicalId)) continue;
     seen.add(p.canonicalId);
-    out.push({ canonicalId: p.canonicalId, url: p.url, text, publishedAt: mail.date });
+    // Solo llegan notificaciones de los grupos a los que se ha unido el fundador: bodas en España.
+    out.push({ canonicalId: p.canonicalId, url: p.url, text, publishedAt: mail.date, spain: true });
   }
   // Un correo con varias publicaciones no permite saber qué texto es de cuál: se descarta.
   return out.length === 1 ? out : [];
@@ -80,12 +81,15 @@ export const facebookMail: Source = {
       const lock = await client.getMailboxLock(all, { readOnly: true });
       try {
         const uids = (await client.search({ from: "facebookmail.com", since: new Date(now.getTime() - 3 * 86_400_000) }, { uid: true })) || [];
+        let mails = 0;
         for (const uid of uids.slice(-100)) {
+          mails++;
           const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
           if (!msg || !msg.source) continue;
           const parsed = await simpleParser(msg.source);
           posts.push(...facebookPostsFromMail({ text: parsed.text ?? "", html: typeof parsed.html === "string" ? parsed.html : "", date: parsed.date ?? null }));
         }
+        console.log(`comunidades: facebook_email ${mails} correos de Facebook, ${posts.length} publicaciones de grupo reconocidas`);
       } finally {
         lock.release();
       }
