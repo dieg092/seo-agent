@@ -21,6 +21,8 @@ export interface RawPost {
   publishedAt: Date | null;
   /** La fuente es de bodas en España por definición (p. ej. nuestro grupo de novias). */
   spain?: boolean;
+  /** Contexto del hilo (p. ej. el texto del vídeo): cuenta para el tema y España, no para la necesidad. */
+  context?: string;
 }
 
 export const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -49,15 +51,16 @@ export interface Scored { score: number; eligible: boolean; reason: string }
 /** Puntuación 0–100 (necesidad 30, tema 25, España 15, < 48 h 15, contestable 15). Umbral 65. */
 export function scorePost(p: RawPost, now: Date): Scored {
   const t = norm(p.text);
+  const ctx = `${t} ${norm(p.context ?? "")}`;
   const ageMs = p.publishedAt ? now.getTime() - p.publishedAt.getTime() : Infinity;
   if (ageMs > MAX_AGE_DAYS * 86_400_000) return { score: 0, eligible: false, reason: "antiguo" };
   if (PROMO.test(t)) return { score: 0, eligible: false, reason: "promocional" };
   if (SENSITIVE.test(t)) return { score: 0, eligible: false, reason: "sensible" };
-  if (!WEDDING.test(t) && !TOPIC.test(t)) return { score: 0, eligible: false, reason: "sin_tema" };
-  if (!p.spain && !SPAIN.test(t)) return { score: 0, eligible: false, reason: "sin_senal_espana" };
+  if (!WEDDING.test(ctx) && !TOPIC.test(ctx)) return { score: 0, eligible: false, reason: "sin_tema" };
+  if (!p.spain && !SPAIN.test(ctx)) return { score: 0, eligible: false, reason: "sin_senal_espana" };
   let score = 0;
   if (NEED.test(t)) score += 30;
-  if (TOPIC.test(t)) score += 25;
+  if (TOPIC.test(ctx)) score += 25;
   score += 15; // señal de España (obligatoria)
   if (ageMs <= 48 * 3_600_000) score += 15;
   if (t.length >= 40) score += 15;

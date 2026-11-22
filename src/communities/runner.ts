@@ -63,7 +63,7 @@ export async function tick(d: TickDeps): Promise<TickResult> {
         await d.db.communityDedup.create({ data: { sourceKind: src.kind, threadKey: tk, disposition: "seen" } });
         if (!s.eligible) continue; // de lo descartado solo queda la huella
         await d.db.communityPost.create({
-          data: { sourceKind: src.kind, threadKey: tk, openUrl: p.url, excerpt: minimize(p.text), publishedAt: p.publishedAt, expiresAt: new Date(now.getTime() + RETENTION_DAYS * DAY), score: s.score, eligible: true, reason: s.reason },
+          data: { sourceKind: src.kind, threadKey: tk, openUrl: p.url, excerpt: minimize(p.context ? `${p.text} [Contexto: ${p.context.slice(0, 160)}]` : p.text), publishedAt: p.publishedAt, expiresAt: new Date(now.getTime() + RETENTION_DAYS * DAY), score: s.score, eligible: true, reason: s.reason },
         });
         stored++;
       }

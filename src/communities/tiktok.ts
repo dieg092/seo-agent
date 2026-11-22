@@ -56,11 +56,21 @@ export function actorInput(query: string) {
 
 export interface TikTokComment { cid?: string; text?: string; createTimeISO?: string; videoWebUrl?: string; repliesToId?: string | null }
 
-/** Comentarios de primer nivel con texto → publicaciones crudas (enlace al vídeo; TikTok no tiene enlace por comentario). */
-export function postsFromComments(comments: TikTokComment[]): RawPost[] {
+/** Señales de Latinoamérica: TikTok no da el país y la búsqueda «desde España» también trae vídeos de allí. */
+const LATAM = /\b(mexico|mexicana?|cdmx|monterrey|guadalajara|morelia|puebla|tijuana|colombia|bogota|medellin|argentina|buenos aires|chile|peru|lima|ecuador|quito|venezuela|bolivia|guatemala|honduras|salvador|costa rica|panama|uruguay|paraguay|cuba|ustedes|quinceanera|xv anos|pesos|mxn)\b/;
+
+export interface TikTokVideo { webVideoUrl?: string; text?: string; locationMeta?: { locationName?: string } | null }
+
+/** Comentarios de primer nivel con texto → publicaciones crudas, con el texto del vídeo como contexto. */
+export function postsFromComments(comments: TikTokComment[], videos: TikTokVideo[] = []): RawPost[] {
+  const byUrl = new Map(videos.map((v) => [v.webVideoUrl, `${v.text ?? ""} ${v.locationMeta?.locationName ?? ""}`.trim()]));
   return comments
     .filter((c) => c.cid && c.text && c.videoWebUrl && !c.repliesToId)
-    .map((c) => ({ canonicalId: c.cid!, url: c.videoWebUrl!, text: c.text!, publishedAt: c.createTimeISO ? new Date(c.createTimeISO) : null }));
+    .map((c) => {
+      const context = byUrl.get(c.videoWebUrl) ?? "";
+      const all = `${c.text} ${context}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      return { canonicalId: c.cid!, url: c.videoWebUrl!, text: c.text!, publishedAt: c.createTimeISO ? new Date(c.createTimeISO) : null, context, spain: !LATAM.test(all) };
+    });
 }
 
 const API = "https://api.apify.com/v2";
@@ -112,7 +122,7 @@ export function tiktokSource(deps: {
         comments.push(...(await api(http, token, `/datasets/${m[1]}/items?clean=true`)));
       }
       deps.log?.(`comunidades: tiktok «${query}»: ${videos.length} vídeos, ${comments.length} comentarios, ${cost.toFixed(3)} $ (mes: ${next.spentUsd.toFixed(2)} $)`);
-      return postsFromComments(comments);
+      return postsFromComments(comments, videos);
     },
   };
 }

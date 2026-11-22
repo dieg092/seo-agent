@@ -184,4 +184,15 @@ test("tiktok: rota búsquedas, respeta el tope mensual y solo usa comentarios de
     { cid: "3", text: "", videoWebUrl: "https://www.tiktok.com/@a/video/9" },
   ]);
   assert.deepEqual(posts.map((p) => p.canonicalId), ["1"]);
+  const vids = [
+    { webVideoUrl: "https://www.tiktok.com/@a/video/9", text: "Así hicimos nuestras invitaciones de boda" },
+    { webVideoUrl: "https://www.tiktok.com/@b/video/8", text: "Invitaciones de boda", locationMeta: { locationName: "Morelia" } },
+  ];
+  const q = "¿Dónde las hiciste? me encantan para la nuestra";
+  const [es, mx] = postsFromComments([
+    { cid: "a", text: q, createTimeISO: NOW.toISOString(), videoWebUrl: vids[0].webVideoUrl },
+    { cid: "b", text: q, createTimeISO: NOW.toISOString(), videoWebUrl: vids[1].webVideoUrl },
+  ], vids);
+  assert.equal(scorePost(es, NOW).eligible, true, "tema del vídeo y sin señales de Latinoamérica");
+  assert.equal(scorePost(mx, NOW).reason, "sin_senal_espana");
 });
