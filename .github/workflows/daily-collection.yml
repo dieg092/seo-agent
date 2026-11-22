@@ -74,6 +74,10 @@ jobs:
             echo "Not Monday — skipping weekly performance audit."
           fi
         continue-on-error: true
+      # Nota de isitagentready.com (perfiles content y all); avisa si algo deja de pasar.
+      - id: collect-agent-readiness
+        run: pnpm collect:agent-readiness
+        continue-on-error: true
       - id: prioritize
         run: pnpm prioritize
       # Freno automático (§14): salta solo, se rearma a mano con pnpm seo:switch rearm.
@@ -84,7 +88,7 @@ jobs:
       # en el Mac con gh (src/githubJobs), sin PAT en Actions.
       - name: Report workflow health
         if: always()
-        run: pnpm exec tsx scripts/report-workflow-health.ts "daily-collection" "${{ steps.collect-gsc.outcome }},${{ steps.collect-gsc-full.outcome }},${{ steps.collect-ga4.outcome }},${{ steps.collect-url-inspection.outcome }},${{ steps.audit-sitemap.outcome }},${{ steps.audit-production.outcome }},${{ steps.audit-robots.outcome }},${{ steps.audit-structured-data.outcome }},${{ steps.audit-performance.outcome }},${{ steps.prioritize.outcome }},${{ steps.evaluate-brake.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: pnpm exec tsx scripts/report-workflow-health.ts "daily-collection" "${{ steps.collect-gsc.outcome }},${{ steps.collect-gsc-full.outcome }},${{ steps.collect-ga4.outcome }},${{ steps.collect-url-inspection.outcome }},${{ steps.audit-sitemap.outcome }},${{ steps.audit-production.outcome }},${{ steps.audit-robots.outcome }},${{ steps.audit-structured-data.outcome }},${{ steps.audit-performance.outcome }},${{ steps.collect-agent-readiness.outcome }},${{ steps.prioritize.outcome }},${{ steps.evaluate-brake.outcome }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       # Uses job.status (not individual step outcomes) so a run is reported
       # even if it dies before "Report workflow health" — e.g. pnpm install

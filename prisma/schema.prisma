@@ -868,3 +868,21 @@ model RepairIncident {
   @@index([status])
   @@schema("seo_agent")
 }
+
+// Nota de isitagentready.com (Cloudflare) para la home, una fila por perfil y día.
+// profile: "content" (7 comprobaciones de web de contenido) o "all" (todas).
+// checks: { "<clave>": "pass" | "fail" | "neutral" }, sin la evidencia cruda.
+model AgentReadinessScan {
+  id        String   @id @default(uuid())
+  scannedAt DateTime @default(now())
+  profile   String
+  level     Int
+  levelName String
+  passed    Int
+  total     Int
+  checks    Json
+  nextLevel Json?
+
+  @@index([profile, scannedAt])
+  @@schema("seo_agent")
+}
