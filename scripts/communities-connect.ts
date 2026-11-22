@@ -37,10 +37,18 @@ async function enable(kind: string, note: string) {
 async function connectGmail() {
   console.log("1) Entra en https://myaccount.google.com/apppasswords, crea una contraseña de aplicación llamada «comunidades» y cópiala.");
   const user = await ask("Tu dirección de Gmail: ");
-  const appPassword = (await ask("Contraseña de aplicación (16 letras): ", true)).replace(/\s+/g, "");
+  // Las contraseñas de aplicación son 16 letras; al pegar pueden colarse espacios o códigos de la terminal.
+  const appPassword = (await ask("Contraseña de aplicación (16 letras): ", true)).replace(/[^a-zA-Z]/g, "");
+  if (appPassword.length !== 16) throw new Error(`la contraseña tiene ${appPassword.length} letras y deben ser 16; vuelve a copiarla`);
   const { ImapFlow } = await import("imapflow");
   const client = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user, pass: appPassword }, logger: false });
-  await client.connect();
+  try {
+    await client.connect();
+  } catch (e: any) {
+    // Sin la contraseña: solo el código y el texto de respuesta del servidor.
+    if (e?.authenticationFailed) throw new Error(`Gmail rechaza el usuario o la contraseña (${e.serverResponseCode ?? "AUTHENTICATIONFAILED"}). Comprueba que la contraseña de aplicación es de esta misma cuenta.`);
+    throw new Error(`${e?.message ?? e}${e?.responseText ? ` (${e.responseText})` : ""}${e?.code ? ` [${e.code}]` : ""}`);
+  }
   await client.logout();
   save(GMAIL_FILE, { user, appPassword });
   await enable("facebook_email", "Lee de tu Gmail las notificaciones de grupos de Facebook (solo lectura)");
