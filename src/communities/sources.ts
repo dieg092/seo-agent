@@ -68,5 +68,5 @@ export const youtube: Source = {
   },
 };
 
-/** Fuentes con adaptador. Telegram y Facebook (Gmail) se añaden cuando el fundador conecte su cuenta. */
+/** Fuentes con adaptador (la lista completa, con Telegram y Gmail, está en accounts.ts: ALL_SOURCES). */
 export const SOURCES: Source[] = [youtube];

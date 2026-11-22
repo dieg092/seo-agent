@@ -9,6 +9,7 @@ import { campaignUrl, hmacKey, madrid, minimize, scorePost, selectCards, threadK
 import { validateDrafts, type DraftInput } from "./draft";
 import { tick, type TickDeps } from "./runner";
 import type { Source } from "./sources";
+import { facebookGroupPost, facebookPostsFromMail, telegramPosts, weddingGroups } from "./accounts";
 
 const NOW = new Date("2026-11-23T08:00:00Z"); // 09:00 en Madrid
 const post = (text: string, hoursAgo = 2, id = "c1"): RawPost => ({ canonicalId: id, url: `https://www.youtube.com/watch?v=v&lc=${id}`, text, publishedAt: new Date(NOW.getTime() - hoursAgo * 3_600_000) });
@@ -117,4 +118,25 @@ test("tick: lo que rechaza la redacción no se vuelve a proponer", async () => {
   const p = await prisma.communityPost.findFirst();
   assert.equal(p?.eligible, false);
   assert.equal(p?.reason, "rechazada_redaccion");
+});
+
+test("telegram: solo grupos públicos de bodas y enlace al mensaje", () => {
+  const gs = weddingGroups([{ id: "1", username: "novias2027es", title: "Novias 2027 España" }, { id: "2", username: null, title: "Novias privadas 2027" }, { id: "3", username: "futbol", title: "Fútbol" }]);
+  assert.deepEqual(gs.map((g) => g.id), ["1"]);
+  const p = telegramPosts(gs[0], [{ id: 42, text: Q, date: NOW.getTime() / 1000 }, { id: 43, text: "ok", date: 0 }]);
+  assert.equal(p.length, 1);
+  assert.equal(p[0].url, "https://t.me/novias2027es/42");
+  assert.equal(p[0].canonicalId, "1:42");
+});
+
+test("facebook por correo: enlace limpio (también envuelto en /nd/) y un único post por correo", () => {
+  assert.deepEqual(facebookGroupPost("https://www.facebook.com/groups/novias2027/posts/123456/?ref=mail"), { canonicalId: "novias2027/123456", url: "https://www.facebook.com/groups/novias2027/posts/123456/" });
+  assert.equal(facebookGroupPost("https://www.facebook.com/nd/?groups%2F99%2Fpermalink%2F777%2F&aref=1")?.canonicalId, "99/777");
+  assert.equal(facebookGroupPost("https://evil.com/groups/1/posts/2"), null);
+  const one = facebookPostsFromMail({ text: `Ana ha publicado en Novias 2027\n${Q}\nVer publicación`, html: '<a href="https://www.facebook.com/groups/1/posts/2/">Ver</a>', date: NOW });
+  assert.equal(one.length, 1);
+  assert.match(one[0].text, /WhatsApp/);
+  assert.doesNotMatch(one[0].text, /Ver publicación/);
+  const two = facebookPostsFromMail({ text: Q, html: '<a href="https://www.facebook.com/groups/1/posts/2/">a</a><a href="https://www.facebook.com/groups/1/posts/3/">b</a>', date: NOW });
+  assert.equal(two.length, 0);
 });

@@ -38,6 +38,8 @@
     "detect:site-architecture": "tsx scripts/detect-site-architecture.ts",
     "fix:public-misredacted": "tsx scripts/fix-public-misredacted.ts",
     "seo:tick": "tsx scripts/seo-tick.ts",
+    "comunidades:telegram": "tsx scripts/communities-connect.ts telegram",
+    "comunidades:gmail": "tsx scripts/communities-connect.ts gmail",
     "collect:agent-readiness": "tsx scripts/collect-agent-readiness.ts"
   },
   "prisma": {
@@ -49,9 +51,13 @@
     "@supabase/supabase-js": "2",
     "cheerio": "^1.0.0",
     "dotenv": "^17.0.0",
-    "googleapis": "^140.0.0"
+    "googleapis": "^140.0.0",
+    "imapflow": "2.11.0",
+    "mailparser": "3.14.2",
+    "teleproto": "1.232.1"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.9.0",
     "@types/node": "^25.0.0",
     "prisma": "^6.13.0",
     "tsx": "^4.22.0",

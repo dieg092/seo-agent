@@ -8,7 +8,7 @@ import { claudeRunner } from "../src/editorial/evaluator";
 import { recordAlert } from "../src/alerts/recordAlert";
 import { hmacKey } from "../src/communities/core";
 import { tick } from "../src/communities/runner";
-import { SOURCES } from "../src/communities/sources";
+import { ALL_SOURCES } from "../src/communities/accounts";
 
 const DIR = join(homedir(), ".comunidades");
 const LOCK = join(DIR, "lock");
@@ -34,7 +34,7 @@ async function main() {
       db: prisma,
       now: () => new Date(),
       env: process.env,
-      sources: SOURCES,
+      sources: ALL_SOURCES,
       key: hmacKey(),
       runner: budgetedRunner(claudeRunner, "background"),
       lastDraftDay: () => readState().lastDraftDay ?? null,
