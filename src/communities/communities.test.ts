@@ -160,3 +160,12 @@ test("facebook por correo: enlace limpio (también envuelto en /nd/) y un único
   const two = facebookPostsFromMail({ text: Q, html: '<a href="https://www.facebook.com/groups/1/posts/2/">a</a><a href="https://www.facebook.com/groups/1/posts/3/">b</a>', date: NOW });
   assert.equal(two.length, 0);
 });
+
+test("tick: una fuente que aún no funciona se reintenta a las 2 h; una que va bien, según su cadencia", async () => {
+  const slow: Source = { kind: "youtube", everyMs: 24 * 3_600_000, configured: () => true, fetch: async () => [] };
+  const d = (now: Date) => ({ ...deps([]), sources: [slow], now: () => now });
+  await prisma.communitySource.update({ where: { kind: "youtube" }, data: { status: "degraded", lastAttemptAt: new Date(NOW.getTime() - 3 * 3_600_000) } });
+  assert.deepEqual((await tick(d(NOW))).fetched, { youtube: 0 });
+  await prisma.communitySource.update({ where: { kind: "youtube" }, data: { lastAttemptAt: new Date(NOW.getTime() - 3 * 3_600_000) } });
+  assert.deepEqual((await tick(d(NOW))).fetched, {}, "ya está ready: espera 24 h");
+});

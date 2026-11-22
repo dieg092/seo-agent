@@ -48,7 +48,9 @@ export async function tick(d: TickDeps): Promise<TickResult> {
   for (const src of d.sources) {
     const row = rows.find((r) => r.kind === src.kind);
     if (!row?.enabled || !src.configured(d.env)) continue;
-    if (row.lastAttemptAt && now.getTime() - row.lastAttemptAt.getTime() < src.everyMs) continue;
+    // Lo que aún no funciona se reintenta cada 2 h, para arrancar pronto en cuanto se conecte.
+    const every = row.status === "ready" ? src.everyMs : Math.min(src.everyMs, 2 * 3_600_000);
+    if (row.lastAttemptAt && now.getTime() - row.lastAttemptAt.getTime() < every) continue;
     await d.db.communitySource.update({ where: { kind: src.kind }, data: { lastAttemptAt: now } });
     try {
       const posts = await src.fetch(now, d.env);
