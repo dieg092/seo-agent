@@ -9,7 +9,8 @@ import { campaignUrl, hmacKey, madrid, minimize, scorePost, selectCards, threadK
 import { validateDrafts, type DraftInput } from "./draft";
 import { tick, type TickDeps } from "./runner";
 import type { Source } from "./sources";
-import { facebookGroupPost, facebookPostsFromMail, telegramPosts, weddingGroups } from "./accounts";
+import { facebookGroupPost, facebookPostsFromMail } from "./accounts";
+import { emptyCursor, messageUrl, parseFeed, processUpdates, tipDue, tipMessage } from "./telegramBot";
 
 const NOW = new Date("2026-11-23T08:00:00Z"); // 09:00 en Madrid
 const post = (text: string, hoursAgo = 2, id = "c1"): RawPost => ({ canonicalId: id, url: `https://www.youtube.com/watch?v=v&lc=${id}`, text, publishedAt: new Date(NOW.getTime() - hoursAgo * 3_600_000) });
@@ -120,13 +121,32 @@ test("tick: lo que rechaza la redacción no se vuelve a proponer", async () => {
   assert.equal(p?.reason, "rechazada_redaccion");
 });
 
-test("telegram: solo grupos públicos de bodas y enlace al mensaje", () => {
-  const gs = weddingGroups([{ id: "1", username: "novias2027es", title: "Novias 2027 España" }, { id: "2", username: null, title: "Novias privadas 2027" }, { id: "3", username: "futbol", title: "Fútbol" }]);
-  assert.deepEqual(gs.map((g) => g.id), ["1"]);
-  const p = telegramPosts(gs[0], [{ id: 42, text: Q, date: NOW.getTime() / 1000 }, { id: 43, text: "ok", date: 0 }]);
-  assert.equal(p.length, 1);
-  assert.equal(p[0].url, "https://t.me/novias2027es/42");
-  assert.equal(p[0].canonicalId, "1:42");
+test("telegram: acepta solo el grupo que añade el fundador y convierte sus preguntas", () => {
+  const FOUNDER = 111;
+  const add = (from: number, id = -1001234) => ({ update_id: 1, my_chat_member: { from: { id: from }, chat: { id, type: "supergroup", title: "Novias 2027", username: "novias2027mwdb" }, new_chat_member: { status: "administrator" } } });
+  assert.equal(processUpdates([add(999)], emptyCursor(), FOUNDER).cursor.chatId, undefined, "lo añade otra persona");
+  const c = processUpdates([add(FOUNDER)], emptyCursor(), FOUNDER).cursor;
+  assert.equal(c.chatId, -1001234);
+  const msg = (id: number, text: string, from = 5, chat = -1001234) => ({ update_id: 10 + id, message: { message_id: id, date: NOW.getTime() / 1000, text, from: { id: from }, chat: { id: chat, type: "supergroup", username: "novias2027mwdb" } } });
+  const r = processUpdates([msg(7, Q), msg(8, Q, FOUNDER), msg(9, Q, 5, -999)], c, FOUNDER);
+  assert.equal(r.posts.length, 1);
+  assert.equal(r.posts[0].url, "https://t.me/novias2027mwdb/7");
+  assert.equal(r.cursor.offset, 20);
+  assert.equal(scorePost({ ...r.posts[0], text: "¿Cómo hacéis las invitaciones para que confirmen asistencia por whatsapp?" }, NOW).eligible, true, "la señal de España viene del grupo");
+  assert.equal(messageUrl(-1009876, null, 3), "https://t.me/c/9876/3");
+  assert.equal(messageUrl(-55, null, 3), null);
+});
+
+test("telegram: consejo del blog martes, jueves y sábado con UTM", () => {
+  const items = parseFeed("<item><title>Cómo enviar invitaciones</title><link>https://miwebdeboda.com/blog/a/b</link><description>Guía práctica &amp; plantillas</description></item>");
+  assert.equal(items[0].summary, "Guía práctica & plantillas");
+  assert.match(tipMessage(items[0]), /utm_source=telegram&utm_medium=community&utm_campaign=grupo_novias/);
+  const withChat = { ...emptyCursor(), chatId: -1 };
+  assert.equal(tipDue(new Date("2026-11-24T10:00:00Z"), withChat), true, "martes 11:00 Madrid");
+  assert.equal(tipDue(new Date("2026-11-23T10:00:00Z"), withChat), false, "lunes");
+  assert.equal(tipDue(new Date("2026-11-24T07:00:00Z"), withChat), false, "antes de las 10");
+  assert.equal(tipDue(new Date("2026-11-24T10:00:00Z"), { ...withChat, lastTipDay: "2026-11-24" }), false, "ya publicado");
+  assert.equal(tipDue(new Date("2026-11-24T10:00:00Z"), emptyCursor()), false, "sin grupo");
 });
 
 test("facebook por correo: enlace limpio (también envuelto en /nd/) y un único post por correo", () => {

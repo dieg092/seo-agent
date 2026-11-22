@@ -19,6 +19,8 @@ export interface RawPost {
   url: string;
   text: string;
   publishedAt: Date | null;
+  /** La fuente es de bodas en España por definición (p. ej. nuestro grupo de novias). */
+  spain?: boolean;
 }
 
 export const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -52,7 +54,7 @@ export function scorePost(p: RawPost, now: Date): Scored {
   if (PROMO.test(t)) return { score: 0, eligible: false, reason: "promocional" };
   if (SENSITIVE.test(t)) return { score: 0, eligible: false, reason: "sensible" };
   if (!WEDDING.test(t) && !TOPIC.test(t)) return { score: 0, eligible: false, reason: "sin_tema" };
-  if (!SPAIN.test(t)) return { score: 0, eligible: false, reason: "sin_senal_espana" };
+  if (!p.spain && !SPAIN.test(t)) return { score: 0, eligible: false, reason: "sin_senal_espana" };
   let score = 0;
   if (NEED.test(t)) score += 30;
   if (TOPIC.test(t)) score += 25;

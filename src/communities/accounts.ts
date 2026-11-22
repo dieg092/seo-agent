@@ -1,6 +1,6 @@
 // src/communities/accounts.ts
-// Telegram (API oficial de cliente, cuenta del fundador, solo lectura) y Facebook leído desde
-// los correos de notificación de grupos en su Gmail (IMAP con contraseña de aplicación).
+// Facebook leído desde los correos de notificación de grupos en el Gmail del fundador
+// (IMAP con contraseña de aplicación, solo lectura). Telegram va en telegramBot.ts.
 // Las credenciales viven en ~/.comunidades/*.json con permisos 600; nunca en la BD ni en logs.
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -9,7 +9,6 @@ import type { RawPost } from "./core";
 import { SourceError, type Source } from "./sources";
 
 export const ACCOUNTS_DIR = join(homedir(), ".comunidades");
-export const TELEGRAM_FILE = join(ACCOUNTS_DIR, "telegram.json");
 export const GMAIL_FILE = join(ACCOUNTS_DIR, "gmail.json");
 
 function readJson<T>(file: string): T | null {
@@ -19,62 +18,6 @@ function readJson<T>(file: string): T | null {
     return null;
   }
 }
-
-// ---------- Telegram ----------
-
-export interface TgGroup { id: string; username: string | null; title: string }
-export interface TgMessage { id: number; text: string; date: number }
-
-/** Grupos de bodas por el título. Solo públicos (con @usuario): de los privados no se envía texto al modelo. */
-export function weddingGroups(groups: TgGroup[]): TgGroup[] {
-  return groups.filter((g) => g.username && /(novi[ao]s?|bodas?|casamos|casarnos|2026|2027)/i.test(g.title));
-}
-
-export function telegramPosts(group: TgGroup, messages: TgMessage[]): RawPost[] {
-  if (!group.username) return [];
-  return messages
-    .filter((m) => m.text && m.text.length >= 20)
-    .map((m) => ({ canonicalId: `${group.id}:${m.id}`, url: `https://t.me/${group.username}/${m.id}`, text: m.text, publishedAt: new Date(m.date * 1000) }));
-}
-
-interface TgConfig { apiId: number; apiHash: string; session: string }
-
-export const telegram: Source = {
-  kind: "telegram",
-  everyMs: 3 * 3_600_000,
-  configured: () => readJson<TgConfig>(TELEGRAM_FILE)?.session != null,
-  async fetch(now) {
-    const cfg = readJson<TgConfig>(TELEGRAM_FILE);
-    if (!cfg) throw new SourceError("needs_auth", "sin sesión de Telegram");
-    const { TelegramClient } = await import("teleproto");
-    const { StringSession } = await import("teleproto/sessions");
-    const client = new TelegramClient(new StringSession(cfg.session), cfg.apiId, cfg.apiHash, { connectionRetries: 2 });
-    client.setLogLevel?.("none" as never);
-    try {
-      await client.connect();
-      if (!(await client.checkAuthorization())) throw new SourceError("needs_auth", "la sesión de Telegram ha caducado");
-      const dialogs = await client.getDialogs({ limit: 200 });
-      const groups = weddingGroups(
-        dialogs
-          .filter((d: any) => d.isGroup || d.isChannel)
-          .map((d: any) => ({ id: String(d.id), username: (d.entity as any)?.username ?? null, title: d.title ?? "" })),
-      );
-      const since = Math.floor(now.getTime() / 1000) - 3 * 86_400;
-      const posts: RawPost[] = [];
-      for (const g of groups.slice(0, 30)) {
-        const msgs = await client.getMessages(g.username!, { limit: 100 });
-        posts.push(...telegramPosts(g, msgs.filter((m: any) => m.date >= since && !m.out).map((m: any) => ({ id: m.id, text: m.message ?? "", date: m.date }))));
-      }
-      return posts;
-    } catch (e: any) {
-      if (e instanceof SourceError) throw e;
-      if (/FLOOD_WAIT/.test(String(e?.message))) throw new SourceError("flood_wait", "Telegram pide esperar");
-      throw new SourceError("telegram_error", String(e?.message ?? e).slice(0, 120));
-    } finally {
-      await client.disconnect().catch(() => {});
-    }
-  },
-};
 
 // ---------- Facebook por Gmail ----------
 
@@ -156,5 +99,15 @@ export const facebookMail: Source = {
   },
 };
 
+import type { PrismaClient } from "@prisma/client";
 import { youtube } from "./sources";
-export const ALL_SOURCES: Source[] = [youtube, telegram, facebookMail];
+import { telegramBotSource } from "./telegramBot";
+
+/** Todas las fuentes; el cursor del bot de Telegram se guarda en CommunitySource.cursor. */
+export function allSources(db: PrismaClient): Source[] {
+  const telegram = telegramBotSource({
+    get: async () => (await db.communitySource.findUnique({ where: { kind: "telegram" } }))?.cursor ?? null,
+    set: async (v) => void (await db.communitySource.update({ where: { kind: "telegram" }, data: { cursor: v } })),
+  });
+  return [youtube, telegram, facebookMail];
+}
