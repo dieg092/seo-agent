@@ -1,10 +1,11 @@
 // scripts/communities-connect.ts — lo ejecuta el fundador una vez por cuenta:
 //   pnpm comunidades:gmail      (Gmail por IMAP con una contraseña de aplicación)
+//   pnpm comunidades:apify      (token de la cuenta gratuita de Apify SOLO para comunidades)
 // Guarda las credenciales en ~/.comunidades/*.json (600), comprueba que funcionan y activa la fuente.
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { prisma } from "../src/db";
-import { ACCOUNTS_DIR, GMAIL_FILE } from "../src/communities/accounts";
+import { ACCOUNTS_DIR, APIFY_FILE, GMAIL_FILE } from "../src/communities/accounts";
 
 function ask(question: string, hidden = false): Promise<string> {
   return new Promise((resolve) => {
@@ -55,8 +56,23 @@ async function connectGmail() {
   console.log("Gmail conectado. Activa en cada grupo de Facebook las notificaciones por correo de las publicaciones nuevas.");
 }
 
+async function connectApify() {
+  console.log("1) En https://console.apify.com/settings/integrations copia el «Personal API token» de la cuenta de comunidades (no la de colaboradores).");
+  const token = (await ask("Token de Apify: ", true)).replace(/\s+/g, "");
+  const r = await fetch("https://api.apify.com/v2/users/me", { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new Error(`Apify rechaza el token (${r.status})`);
+  const me: any = (await r.json()).data;
+  save(APIFY_FILE, { token });
+  await prisma.communitySource.upsert({
+    where: { kind: "tiktok" },
+    create: { kind: "tiktok", enabled: true, status: "ready", note: "TikTok con la cuenta gratuita de Apify (tope 4 $/mes)" },
+    update: { enabled: true, status: "ready", note: "TikTok con la cuenta gratuita de Apify (tope 4 $/mes)", lastAttemptAt: null, lastErrorCode: null },
+  });
+  console.log(`Apify conectado (usuario ${me?.username ?? "?"}, plan ${me?.plan?.id ?? "?"}). TikTok hará una búsqueda al día con tope de 4 $ al mes.`);
+}
+
 const which = process.argv[2];
-(which === "gmail" ? connectGmail() : Promise.reject(new Error("uso: gmail")))
+(which === "gmail" ? connectGmail() : which === "apify" ? connectApify() : Promise.reject(new Error("uso: gmail | apify")))
   .catch((e) => {
     console.error("No se pudo conectar:", e instanceof Error ? e.message : e);
     process.exitCode = 1;

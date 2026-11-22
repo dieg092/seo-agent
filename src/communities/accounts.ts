@@ -10,6 +10,7 @@ import { SourceError, type Source } from "./sources";
 
 export const ACCOUNTS_DIR = join(homedir(), ".comunidades");
 export const GMAIL_FILE = join(ACCOUNTS_DIR, "gmail.json");
+export const APIFY_FILE = join(ACCOUNTS_DIR, "apify.json");
 
 function readJson<T>(file: string): T | null {
   try {
@@ -106,6 +107,7 @@ export const facebookMail: Source = {
 import type { PrismaClient } from "@prisma/client";
 import { youtube } from "./sources";
 import { telegramBotSource } from "./telegramBot";
+import { tiktokSource } from "./tiktok";
 
 /** Todas las fuentes; el cursor del bot de Telegram se guarda en CommunitySource.cursor. */
 export function allSources(db: PrismaClient): Source[] {
@@ -113,5 +115,13 @@ export function allSources(db: PrismaClient): Source[] {
     get: async () => (await db.communitySource.findUnique({ where: { kind: "telegram" } }))?.cursor ?? null,
     set: async (v) => void (await db.communitySource.update({ where: { kind: "telegram" }, data: { cursor: v } })),
   });
-  return [youtube, telegram, facebookMail];
+  const tiktok = tiktokSource({
+    token: () => readJson<{ token: string }>(APIFY_FILE)?.token ?? null,
+    store: {
+      get: async () => (await db.communitySource.findUnique({ where: { kind: "tiktok" } }))?.cursor ?? null,
+      set: async (v) => void (await db.communitySource.update({ where: { kind: "tiktok" }, data: { cursor: v } })),
+    },
+    log: (m) => console.log(m),
+  });
+  return [youtube, telegram, facebookMail, tiktok];
 }

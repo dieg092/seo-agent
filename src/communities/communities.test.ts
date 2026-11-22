@@ -169,3 +169,19 @@ test("tick: una fuente que aún no funciona se reintenta a las 2 h; una que va b
   await prisma.communitySource.update({ where: { kind: "youtube" }, data: { lastAttemptAt: new Date(NOW.getTime() - 3 * 3_600_000) } });
   assert.deepEqual((await tick(d(NOW))).fetched, {}, "ya está ready: espera 24 h");
 });
+
+test("tiktok: rota búsquedas, respeta el tope mensual y solo usa comentarios de primer nivel", async () => {
+  const { parseTikTokCursor, canSpend, postsFromComments, actorInput, QUERIES, MONTHLY_CAP_USD } = await import("./tiktok");
+  const c = parseTikTokCursor(JSON.stringify({ month: "2026-10", spentUsd: 3.99, next: 7 }), NOW);
+  assert.equal(c.spentUsd, 0, "mes nuevo, gasto a cero");
+  assert.equal(c.next, 7);
+  assert.equal(canSpend({ ...c, spentUsd: MONTHLY_CAP_USD - 0.1 }), false);
+  assert.equal(canSpend({ ...c, spentUsd: 1 }), true);
+  assert.equal(actorInput(QUERIES[0]).proxyCountryCode, "ES");
+  const posts = postsFromComments([
+    { cid: "1", text: "¿Cómo hacéis las invitaciones?", createTimeISO: NOW.toISOString(), videoWebUrl: "https://www.tiktok.com/@a/video/9" },
+    { cid: "2", text: "respuesta", videoWebUrl: "https://www.tiktok.com/@a/video/9", repliesToId: "1" },
+    { cid: "3", text: "", videoWebUrl: "https://www.tiktok.com/@a/video/9" },
+  ]);
+  assert.deepEqual(posts.map((p) => p.canonicalId), ["1"]);
+});

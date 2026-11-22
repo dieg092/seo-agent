@@ -39,6 +39,7 @@
     "fix:public-misredacted": "tsx scripts/fix-public-misredacted.ts",
     "seo:tick": "tsx scripts/seo-tick.ts",
     "comunidades:gmail": "tsx scripts/communities-connect.ts gmail",
+    "comunidades:apify": "tsx scripts/communities-connect.ts apify",
     "collect:agent-readiness": "tsx scripts/collect-agent-readiness.ts"
   },
   "prisma": {
