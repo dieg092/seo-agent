@@ -46,21 +46,26 @@ const SPAIN = /\b(espana|madrid|barcelona|valencia|sevilla|zaragoza|malaga|bilba
 const PROMO = /\b(sorteo|descuento|codigo promocional|oferta|presupuesto sin compromiso|contactanos|escribenos|dm para|link en bio|enlace en bio|compra ya|reserva tu)\b/;
 const SENSITIVE = /\b(menor de edad|tengo 1[0-7] anos|suicid|maltrato|violencia)\b/;
 
+// En el contexto (texto de un vídeo, con hashtags pegados como #invitacionesdeboda) se busca por fragmentos.
+const CTX_WEDDING = /(boda|casamos|casarnos|novi[ao]|wedding|invitaci|invitad)/;
+const CTX_TOPIC = /(invitaci|asistencia|rsvp|invitad|savethedate|save the date)/;
+
 export interface Scored { score: number; eligible: boolean; reason: string }
 
 /** Puntuación 0–100 (necesidad 30, tema 25, España 15, < 48 h 15, contestable 15). Umbral 65. */
 export function scorePost(p: RawPost, now: Date): Scored {
   const t = norm(p.text);
-  const ctx = `${t} ${norm(p.context ?? "")}`;
+  const c = norm(p.context ?? "");
+  const ctx = `${t} ${c}`;
   const ageMs = p.publishedAt ? now.getTime() - p.publishedAt.getTime() : Infinity;
   if (ageMs > MAX_AGE_DAYS * 86_400_000) return { score: 0, eligible: false, reason: "antiguo" };
   if (PROMO.test(t)) return { score: 0, eligible: false, reason: "promocional" };
   if (SENSITIVE.test(t)) return { score: 0, eligible: false, reason: "sensible" };
-  if (!WEDDING.test(ctx) && !TOPIC.test(ctx)) return { score: 0, eligible: false, reason: "sin_tema" };
+  if (!WEDDING.test(ctx) && !TOPIC.test(ctx) && !CTX_WEDDING.test(c)) return { score: 0, eligible: false, reason: "sin_tema" };
   if (!p.spain && !SPAIN.test(ctx)) return { score: 0, eligible: false, reason: "sin_senal_espana" };
   let score = 0;
   if (NEED.test(t)) score += 30;
-  if (TOPIC.test(ctx)) score += 25;
+  if (TOPIC.test(ctx) || CTX_TOPIC.test(c)) score += 25;
   score += 15; // señal de España (obligatoria)
   if (ageMs <= 48 * 3_600_000) score += 15;
   if (t.length >= 40) score += 15;

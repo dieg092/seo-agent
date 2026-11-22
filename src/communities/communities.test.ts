@@ -195,4 +195,5 @@ test("tiktok: rota búsquedas, respeta el tope mensual y solo usa comentarios de
   ], vids);
   assert.equal(scorePost(es, NOW).eligible, true, "tema del vídeo y sin señales de Latinoamérica");
   assert.equal(scorePost(mx, NOW).reason, "sin_senal_espana");
+  assert.equal(scorePost({ ...es, context: "#invitacionesdeboda #bodas2027" }, NOW).eligible, true, "hashtags pegados");
 });
