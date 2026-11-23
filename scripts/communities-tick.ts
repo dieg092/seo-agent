@@ -42,7 +42,7 @@ async function main() {
       env: process.env,
       sources: allSources(prisma),
       key: hmacKey(),
-      runner: budgetedRunner(claudeRunner, "background"),
+      runner: budgetedRunner(claudeRunner, "community"),
       lastDraftDay: () => readState().lastDraftDay ?? null,
       setLastDraftDay: (day) => writeFileSync(STATE, JSON.stringify({ ...readState(), lastDraftDay: day })),
       log: console.log,

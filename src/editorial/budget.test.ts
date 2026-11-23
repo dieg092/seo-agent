@@ -2,7 +2,7 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { prisma } from "../db";
-import { budgetToday, budgetedRunner, reserveCall, EDITORIAL_DAILY_BACKGROUND, EDITORIAL_DAILY_GUARD } from "./budget";
+import { budgetToday, budgetedRunner, reserveCall, COMMUNITY_DAILY_RESERVE, EDITORIAL_DAILY_BACKGROUND, EDITORIAL_DAILY_GUARD } from "./budget";
 import { EditorialDeferred, classifyModelError, madridDay, nextMadridMidnight, parseReset } from "./modelErrors";
 import type { Runner } from "./evaluator";
 
@@ -49,4 +49,13 @@ test("un límite de cupo para a todos hasta el reinicio; la guarda no espera a �
   assert.deepEqual(await budgetedRunner(ok, "guard", () => new Date("2026-11-19T15:16:00Z"))({ system: "", user: "", schema: {} }), { ok: true });
   await assert.rejects(reserveCall("background", new Date("2026-11-19T16:00:00Z"), { busy: () => true }), (e) => e instanceof EditorialDeferred && e.kind === "busy");
   await reserveCall("guard", new Date("2026-11-19T16:00:00Z"));
+});
+
+test("comunidades tiene 2 llamadas reservadas aunque el fondo de hoy esté gastado, y también espera a Órbita", async () => {
+  for (let i = 0; i < EDITORIAL_DAILY_BACKGROUND; i++) await reserveCall("background", NOW, { busy: () => false });
+  await assert.rejects(reserveCall("background", NOW, { busy: () => false }), (e) => e instanceof EditorialDeferred && e.kind === "budget");
+  await assert.rejects(reserveCall("community", NOW, { busy: () => true }), (e) => e instanceof EditorialDeferred && e.kind === "busy");
+  for (let i = 0; i < COMMUNITY_DAILY_RESERVE; i++) await reserveCall("community", NOW, { busy: () => false });
+  await assert.rejects(reserveCall("community", NOW, { busy: () => false }), (e) => e instanceof EditorialDeferred && e.kind === "budget");
+  await assert.rejects(reserveCall("background", NOW, { busy: () => false }), EditorialDeferred);
 });

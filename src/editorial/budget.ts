@@ -15,10 +15,13 @@ import { EditorialDeferred, classifyModelError, madridDay, nextMadridMidnight } 
 
 export const EDITORIAL_DAILY_BACKGROUND = 14;
 export const EDITORIAL_DAILY_GUARD = 6;
+/** Llamadas reservadas al agente de comunidades (redacción + revisión). Cuentan en la columna
+ * de fondo, pero con tope 14+2: el resto del fondo para en 14, así que comunidades siempre tiene sus 2. */
+export const COMMUNITY_DAILY_RESERVE = 2;
 const GLOBAL = "global";
 const BUSY_WAIT_MS = 30 * 60_000;
 
-export type CallKind = "background" | "guard";
+export type CallKind = "background" | "guard" | "community";
 
 /** ¿Hay un Claude de Órbita trabajando? (el trabajador lo lanza con --permission-mode dontAsk) */
 export function orbitaBusy(): boolean {
@@ -42,13 +45,13 @@ export async function recordQuota(retryAt: Date): Promise<void> {
 export async function reserveCall(kind: CallKind, now: Date, deps: { busy?: () => boolean } = {}): Promise<void> {
   const q = await quotaUntil(now);
   if (q) throw new EditorialDeferred("quota", q, `cupo del modelo agotado hasta ${q.toISOString()}`);
-  if (kind === "background" && (deps.busy ?? orbitaBusy)()) throw new EditorialDeferred("busy", new Date(now.getTime() + BUSY_WAIT_MS), "Órbita está usando el modelo");
+  if (kind !== "guard" && (deps.busy ?? orbitaBusy)()) throw new EditorialDeferred("busy", new Date(now.getTime() + BUSY_WAIT_MS), "Órbita está usando el modelo");
   const day = madridDay(now);
-  const limit = kind === "background" ? EDITORIAL_DAILY_BACKGROUND : EDITORIAL_DAILY_GUARD;
+  const limit = kind === "background" ? EDITORIAL_DAILY_BACKGROUND : kind === "community" ? EDITORIAL_DAILY_BACKGROUND + COMMUNITY_DAILY_RESERVE : EDITORIAL_DAILY_GUARD;
   await prisma.editorialBudget.upsert({ where: { day }, create: { day }, update: {} });
-  const col = kind === "background" ? "background" : "guard";
+  const col = kind === "guard" ? "guard" : "background";
   const updated = await prisma.editorialBudget.updateMany({ where: { day, [col]: { lt: limit } }, data: { [col]: { increment: 1 } } });
-  if (updated.count === 0) throw new EditorialDeferred("budget", nextMadridMidnight(now), `presupuesto editorial de hoy gastado (${limit} llamadas de ${kind === "background" ? "fondo" : "guarda"})`);
+  if (updated.count === 0) throw new EditorialDeferred("budget", nextMadridMidnight(now), `presupuesto editorial de hoy gastado (${limit} llamadas de ${kind === "guard" ? "guarda" : kind === "community" ? "fondo con la reserva de comunidades" : "fondo"})`);
 }
 
 /** Runner con presupuesto: reserva antes de cada llamada y apunta los límites de cupo. */
