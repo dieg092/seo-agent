@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { prisma } from "../db";
 import { EditorialDeferred } from "../editorial/modelErrors";
 import { campaignUrl, hmacKey, madrid, minimize, scorePost, selectCards, threadKey, type RawPost } from "./core";
-import { applyReview, checkText, validateDrafts, type DraftInput } from "./draft";
+import { applyReview, checkText, explainDrafts, validateDrafts, type DraftInput } from "./draft";
 import { tick, type TickDeps } from "./runner";
 import type { Source } from "./sources";
 import { facebookGroupPost, facebookPostsFromMail } from "./accounts";
@@ -223,4 +223,16 @@ test("tiktok: rota búsquedas, respeta el tope mensual y solo usa comentarios de
   assert.equal(scorePost(es, NOW).eligible, true, "tema del vídeo y sin señales de Latinoamérica");
   assert.equal(scorePost(mx, NOW).reason, "sin_senal_espana");
   assert.equal(scorePost({ ...es, context: "#invitacionesdeboda #bodas2027" }, NOW).eligible, true, "hashtags pegados");
+});
+
+test("redacción: el registro dice por qué se descarta cada borrador", () => {
+  const tk: DraftInput = { id: "t", source: "tiktok", excerpt: "x", campaignUrl: campaignUrl("/x", "tiktok", "k") };
+  const raw = { results: [
+    { id: "t", decision: "skip" },
+    { id: "t", decision: "draft", text: "Nosotros lo hicimos con un formulario y una hoja compartida, sin líos ni papeles ni llamadas. ".repeat(3) },
+    { id: "t", decision: "draft", text: "¡Hola! Yo lo pondría en la web, así te confirman solos" },
+    { id: "zz", decision: "draft", text: "a" },
+  ] };
+  assert.equal(explainDrafts(raw, [tk]), "decision_skip×1, largo(48p)×1, suena_ia(¡Hola!)×1, id_desconocido×1");
+  assert.equal(explainDrafts({}, [tk]), "sin_resultados×1");
 });

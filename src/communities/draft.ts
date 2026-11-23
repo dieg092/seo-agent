@@ -125,20 +125,49 @@ const PRICE = /\d+(?:[.,]\d+)?\s?(?:€|euros?\b)|€\s?\d/i;
 const AI_TELLS = /(—|^¡?hola[,!]|espero que te (sirva|ayude)|no dudes en|sin duda|en resumen|cabe destacar|¡enhorabuena|maravillos|increible|increíble|magic[oa]|mágic[oa]|perfect[oa] para|^\s*[-•*]\s|\n\s*[-•*]\s|\n\s*\d+[.)]\s)/im;
 
 /** Comprueba un texto para una candidata; devuelve el borrador o null. */
-export function checkText(textIn: string, c: DraftInput): Draft | null {
+/** Motivo por el que un borrador no vale, o null si cumple las reglas. */
+export function rejectReason(textIn: string, c: DraftInput): string | null {
   const text = textIn.trim();
   const st = styleFor(c.source);
   const words = text.split(/\s+/).length;
-  if (words < st.minWords || words > st.maxWords || text.length > st.maxChars || PRICE.test(text)) return null;
-  if (AI_TELLS.test(text) || (text.match(/!/g) ?? []).length > 2) return null;
-  if ((text.match(/\p{Extended_Pictographic}/gu) ?? []).length > 1) return null;
+  if (words < st.minWords) return `corto(${words}p)`;
+  if (words > st.maxWords) return `largo(${words}p)`;
+  if (text.length > st.maxChars) return `largo(${text.length}c)`;
+  if (PRICE.test(text)) return "precio";
+  const tell = text.match(AI_TELLS);
+  if (tell) return `suena_ia(${tell[0].trim().slice(0, 20)})`;
+  if ((text.match(/!/g) ?? []).length > 2) return "exclamaciones";
+  if ((text.match(/\p{Extended_Pictographic}/gu) ?? []).length > 1) return "emojis";
   const links = (text.match(/https?:\/\/\S+/g) ?? []).map((l) => l.replace(/[).,;:!?»]+$/, ""));
-  if (links.length > 0 && !st.link) return null;
-  if (!links.every((l) => l === c.campaignUrl || l === `${SITE}/precios`)) return null;
+  if (links.length > 0 && !st.link) return "enlace_no_permitido";
+  if (!links.every((l) => l === c.campaignUrl || l === `${SITE}/precios`)) return "enlace_ajeno";
   const mentions = /miwebdeboda/i.test(text);
-  if (mentions && !/soy el creador de miwebdeboda/i.test(text)) return null;
-  if (!mentions && links.length > 0) return null;
-  return { id: c.id, text, mentionsSite: mentions };
+  if (mentions && !/soy el creador de miwebdeboda/i.test(text)) return "mencion_sin_presentarse";
+  if (!mentions && links.length > 0) return "enlace_sin_presentarse";
+  return null;
+}
+
+export function checkText(textIn: string, c: DraftInput): Draft | null {
+  if (rejectReason(textIn, c)) return null;
+  const text = textIn.trim();
+  return { id: c.id, text, mentionsSite: /miwebdeboda/i.test(text) };
+}
+
+/** Resumen de por qué la redacción no dio borradores (para el registro). */
+export function explainDrafts(raw: unknown, cands: DraftInput[]): string {
+  const byId = new Map(cands.map((c) => [c.id, c]));
+  const counts = new Map<string, number>();
+  const add = (k: string) => counts.set(k, (counts.get(k) ?? 0) + 1);
+  const results = parseResults<{ id?: string; decision?: string; text?: string }>(raw);
+  if (results.length === 0) add("sin_resultados");
+  for (const r of results) {
+    const c = r.id ? byId.get(r.id) : undefined;
+    if (!c) add("id_desconocido");
+    else if (r.decision !== "draft") add(`decision_${r.decision ?? "vacia"}`);
+    else if (typeof r.text !== "string") add("sin_texto");
+    else add(rejectReason(r.text, c) ?? "ok");
+  }
+  return [...counts].map(([k, n]) => `${k}×${n}`).join(", ");
 }
 
 function parseResults<T>(raw: unknown): T[] {

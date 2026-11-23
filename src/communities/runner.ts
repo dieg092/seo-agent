@@ -7,7 +7,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { Runner } from "../editorial/evaluator";
 import { EditorialDeferred } from "../editorial/modelErrors";
 import { DAILY_CARDS, RETENTION_DAYS, campaignUrl, madrid, minimize, scorePost, selectCards, threadKey } from "./core";
-import { DRAFT_SYSTEM, REVIEW_SYSTEM, applyReview, buildDraftPrompt, buildReviewPrompt, draftSchema, reviewSchema, validateDrafts, type DraftInput } from "./draft";
+import { DRAFT_SYSTEM, REVIEW_SYSTEM, applyReview, explainDrafts, buildDraftPrompt, buildReviewPrompt, draftSchema, reviewSchema, validateDrafts, type DraftInput } from "./draft";
 import { SourceError, type Source } from "./sources";
 
 export interface TickDeps {
@@ -93,6 +93,7 @@ export async function tick(d: TickDeps): Promise<TickResult> {
   try {
     const raw = await d.runner({ system: DRAFT_SYSTEM, user: buildDraftPrompt(inputs), schema: draftSchema });
     const first = validateDrafts(raw, inputs);
+    if (first.length < inputs.length) d.log?.(`comunidades: redacción descartada: ${explainDrafts(raw, inputs)}`);
     // Segunda pasada obligatoria: nada llega al panel sin nota de «suena humano» ≥ 8.
     const reviewed = first.length ? await d.runner({ system: REVIEW_SYSTEM, user: buildReviewPrompt(first, inputs), schema: reviewSchema }) : { results: [] };
     drafts = applyReview(reviewed, first, inputs).slice(0, slots);
